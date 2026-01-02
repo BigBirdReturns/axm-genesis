@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "single_file",
+      "files": {
+        "content/test.txt": "hello world\n"
+      },
+      "expected_root": "276180d4db22a43458f0efb64127f700c087faa35e3cc61e85f03b0ee47bc389"
+    },
+    {
+      "name": "multiple_files",
+      "files": {
+        "content/a.txt": "aaa\n",
+        "content/b.txt": "bbb\n"
+      },
+      "expected_root": "151449b6531575cd386404e3e77f27bd2ca892d9ffc7b4b259d339c324f7eccd"
+    }
+  ]
+}
