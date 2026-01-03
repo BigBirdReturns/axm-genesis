@@ -42,7 +42,7 @@
     },
     {
       "input": "Null\u0000Byte",
-      "expected": "nullbyte"
+      "expected_error": "ValueError"
     },
     {
       "input": "Line\r\nBreaks\rTest",

@@ -5,6 +5,9 @@ import hashlib
 import unicodedata
 
 def canonicalize(text: str) -> str:
+    if "\x00" in text:
+        raise ValueError("Identifier contains illegal null byte")
+
     # NFC normalization + casefold + whitespace collapse
     t = unicodedata.normalize("NFC", text)
     t = t.casefold()

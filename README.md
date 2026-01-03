@@ -61,7 +61,7 @@ Every claim traces back to exact bytes in the source document. No hallucination 
 pip install -e .
 
 # Verify the gold shard
-axm-verify shard shards/gold/fm21-11-hemorrhage-v1/
+axm-verify shard shards/gold/fm21-11-hemorrhage-v1/ --trusted-key keys/canonical_test_publisher.pub
 # {"status": "PASS", "error_count": 0, "errors": []}
 
 # Query it

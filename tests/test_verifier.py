@@ -12,12 +12,17 @@ from axm_verify.logic import verify_shard
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VECTORS = REPO_ROOT / "tests" / "vectors"
+TRUSTED_KEY = REPO_ROOT / "keys" / "canonical_test_publisher.pub"
 
 
 def test_identity_vectors() -> None:
     data = json.loads((VECTORS / "identity.json").read_text(encoding="utf-8"))
     for case in data["canonicalization"]:
-        assert canonicalize(case["input"]) == case["expected"]
+        if case.get("expected_error"):
+            with pytest.raises(ValueError):
+                canonicalize(case["input"])
+        else:
+            assert canonicalize(case["input"]) == case["expected"]
 
     for case in data["entity_ids"]:
         assert recompute_entity_id(case["namespace"], case["label"]) == case["expected_id"]
@@ -49,7 +54,7 @@ def test_merkle_vectors(tmp_path: Path) -> None:
 
 def test_gold_shard_passes() -> None:
     gold = REPO_ROOT / "shards" / "gold" / "fm21-11-hemorrhage-v1"
-    res = verify_shard(gold)
+    res = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
     assert res["status"] == "PASS"
     assert res["error_count"] == 0
     assert res["errors"] == []
@@ -67,7 +72,7 @@ def test_gold_shard_passes() -> None:
 )
 def test_invalid_shards_fail(name: str, expected_code: str) -> None:
     shard = VECTORS / "shards" / "invalid" / name
-    res = verify_shard(shard)
+    res = verify_shard(shard, trusted_key_path=TRUSTED_KEY)
     assert res["status"] == "FAIL"
     assert res["error_count"] >= 1
     codes = {e["code"] for e in res["errors"]}

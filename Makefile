@@ -7,7 +7,7 @@ test:
 	pytest tests/ -v
 
 verify-gold:
-	axm-verify shard shards/gold/fm21-11-hemorrhage-v1/
+	axm-verify shard shards/gold/fm21-11-hemorrhage-v1/ --trusted-key keys/canonical_test_publisher.pub
 
 lint:
 	ruff check src/

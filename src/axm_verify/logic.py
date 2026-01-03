@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
@@ -12,13 +13,23 @@ from .const import (
     ErrorCode,
     ENTITIES_SCHEMA, CLAIMS_SCHEMA, PROVENANCE_SCHEMA, SPANS_SCHEMA,
     VALID_OBJECT_TYPES, VALID_TIERS,
-    REQUIRED_ROOT_ITEMS, REQUIRED_SIG_FILES, REQUIRED_GRAPH_FILES, REQUIRED_EVIDENCE_FILES,
+    REQUIRED_ROOT_ITEMS,
 )
 from .identity import recompute_entity_id, recompute_claim_id
 from .crypto import compute_merkle_root, verify_manifest_signature
 
+# Limits (policy, not protocol)
+MAX_MANIFEST_BYTES = 256 * 1024  # 256 KiB
+MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB per file
+MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB total content scanned
+MAX_CONTENT_FILES = 10000
+MAX_PARQUET_ROWS = 1_000_000
+HASH_CHUNK_SIZE = 64 * 1024
+
+
 def _err(errors: List[Dict[str, str]], code: ErrorCode, message: str) -> None:
     errors.append({"code": code.value, "message": message})
+
 
 def _is_hex_64(s: str) -> bool:
     if not isinstance(s, str) or len(s) != 64:
@@ -29,12 +40,23 @@ def _is_hex_64(s: str) -> bool:
     except Exception:
         return False
 
+
+def _sha256_stream(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(HASH_CHUNK_SIZE)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
     if not root.exists() or not root.is_dir():
         _err(errors, ErrorCode.E_LAYOUT_MISSING, "Shard path does not exist or is not a directory")
         return False
 
-    # Root must contain only manifest.json and the four dirs
     items = {p.name for p in root.iterdir()}
     missing = REQUIRED_ROOT_ITEMS - items
     extra = items - REQUIRED_ROOT_ITEMS
@@ -45,77 +67,32 @@ def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
     if missing or extra:
         return False
 
-    # No dotfiles anywhere
-    for p in root.rglob("*"):
-        if p.name.startswith("."):
-            _err(errors, ErrorCode.E_DOTFILE, f"Dotfile found: {p.relative_to(root).as_posix()}")
-            return False
+    # Dotfiles scan using os.walk (avoid symlink recursion)
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dp = Path(dirpath)
+        dirnames[:] = [d for d in dirnames if not (dp / d).is_symlink()]
 
-    # sig strict
-    sig_dir = root / "sig"
-    if not sig_dir.is_dir():
-        _err(errors, ErrorCode.E_LAYOUT_MISSING, "Missing directory: sig/")
-        return False
-    sig_items = {p.name for p in sig_dir.iterdir() if p.is_file()}
-    missing = REQUIRED_SIG_FILES - sig_items
-    extra = sig_items - REQUIRED_SIG_FILES
-    if missing:
-        _err(errors, ErrorCode.E_LAYOUT_MISSING, f"Missing required sig/ files: {sorted(missing)}")
-    if extra:
-        _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Unexpected sig/ items present: {sorted(extra)}")
-    if missing or extra:
-        return False
-
-    # graph strict
-    graph_dir = root / "graph"
-    if not graph_dir.is_dir():
-        _err(errors, ErrorCode.E_LAYOUT_MISSING, "Missing directory: graph/")
-        return False
-    graph_items = {p.name for p in graph_dir.iterdir() if p.is_file()}
-    missing = REQUIRED_GRAPH_FILES - graph_items
-    extra = graph_items - REQUIRED_GRAPH_FILES
-    if missing:
-        _err(errors, ErrorCode.E_LAYOUT_MISSING, f"Missing required graph/ files: {sorted(missing)}")
-    if extra:
-        _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Unexpected graph/ items present: {sorted(extra)}")
-    if missing or extra:
-        return False
-
-    # evidence strict
-    ev_dir = root / "evidence"
-    if not ev_dir.is_dir():
-        _err(errors, ErrorCode.E_LAYOUT_MISSING, "Missing directory: evidence/")
-        return False
-    ev_items = {p.name for p in ev_dir.iterdir() if p.is_file()}
-    missing = REQUIRED_EVIDENCE_FILES - ev_items
-    extra = ev_items - REQUIRED_EVIDENCE_FILES
-    if missing:
-        _err(errors, ErrorCode.E_LAYOUT_MISSING, f"Missing required evidence/ files: {sorted(missing)}")
-    if extra:
-        _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Unexpected evidence/ items present: {sorted(extra)}")
-    if missing or extra:
-        return False
-
-    # content exists
-    content_dir = root / "content"
-    if not content_dir.is_dir():
-        _err(errors, ErrorCode.E_LAYOUT_MISSING, "Missing directory: content/")
-        return False
+        for name in filenames:
+            p = dp / name
+            if p.is_symlink():
+                continue
+            if p.name.startswith("."):
+                _err(errors, ErrorCode.E_DOTFILE, f"Dotfile found: {p.relative_to(root).as_posix()}")
+                return False
 
     return True
 
-def _read_manifest(root: Path, errors: List[Dict[str, str]]) -> Dict[str, Any]:
-    mp = root / "manifest.json"
+
+def _read_manifest(manifest_bytes: bytes, errors: List[Dict[str, str]]) -> Dict[str, Any]:
     try:
-        data = json.loads(mp.read_text(encoding="utf-8"))
+        data = json.loads(manifest_bytes)
     except json.JSONDecodeError:
         _err(errors, ErrorCode.E_MANIFEST_SYNTAX, "Invalid JSON in manifest.json")
         return {}
     except Exception as e:
-        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, f"Cannot read manifest.json: {e}")
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, f"Cannot parse manifest.json: {e}")
         return {}
 
-    # Minimal required fields per prompt
     integ = data.get("integrity", {})
     if not isinstance(integ, dict):
         _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "manifest.integrity must be an object")
@@ -127,17 +104,27 @@ def _read_manifest(root: Path, errors: List[Dict[str, str]]) -> Dict[str, Any]:
 
     return data
 
+
 def _validate_parquet_schema(path: Path, expected: pa.Schema, errors: List[Dict[str, str]]) -> pa.Table | None:
     if not path.exists():
         _err(errors, ErrorCode.E_SCHEMA_MISSING, f"Missing file: {path.name}")
         return None
+
     try:
-        table = pq.read_table(path)
+        if path.stat().st_size > MAX_FILE_BYTES:
+            _err(errors, ErrorCode.E_SCHEMA_READ, f"{path.name} exceeds file size limit ({MAX_FILE_BYTES} bytes)")
+            return None
+
+        pf = pq.ParquetFile(path)
+        if pf.metadata is not None and pf.metadata.num_rows > MAX_PARQUET_ROWS:
+            _err(errors, ErrorCode.E_SCHEMA_READ, f"{path.name} exceeds row limit ({MAX_PARQUET_ROWS})")
+            return None
+
+        table = pf.read()
     except Exception as e:
         _err(errors, ErrorCode.E_SCHEMA_READ, f"Cannot read {path.name}: {e}")
         return None
 
-    # Exact order, exact types
     if len(table.schema) != len(expected):
         _err(errors, ErrorCode.E_SCHEMA_TYPE, f"{path.name} column count mismatch")
         return None
@@ -145,10 +132,13 @@ def _validate_parquet_schema(path: Path, expected: pa.Schema, errors: List[Dict[
     for i, field in enumerate(table.schema):
         exp = expected[i]
         if field.name != exp.name or field.type != exp.type:
-            _err(errors, ErrorCode.E_SCHEMA_TYPE, f"{path.name} mismatch at col {i}: expected {exp.name}({exp.type}), got {field.name}({field.type})")
+            _err(
+                errors,
+                ErrorCode.E_SCHEMA_TYPE,
+                f"{path.name} mismatch at col {i}: expected {exp.name}({exp.type}), got {field.name}({field.type})",
+            )
             return None
 
-    # No nulls
     for name in table.column_names:
         if table[name].null_count > 0:
             _err(errors, ErrorCode.E_SCHEMA_NULL, f"{path.name} column {name} contains nulls")
@@ -156,12 +146,8 @@ def _validate_parquet_schema(path: Path, expected: pa.Schema, errors: List[Dict[
 
     return table
 
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    h.update(path.read_bytes())
-    return h.hexdigest()
 
-def verify_shard(shard_path: str | Path) -> Dict[str, Any]:
+def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "strict") -> Dict[str, Any]:
     root = Path(shard_path)
     errors: List[Dict[str, str]] = []
 
@@ -169,24 +155,55 @@ def verify_shard(shard_path: str | Path) -> Dict[str, Any]:
     if not _validate_root_layout(root, errors):
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
-    # 2) Manifest
-    manifest = _read_manifest(root, errors)
+    # 2) Manifest (bounded)
+    try:
+        manifest_path = root / "manifest.json"
+        if manifest_path.stat().st_size > MAX_MANIFEST_BYTES:
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, f"manifest.json exceeds size limit ({MAX_MANIFEST_BYTES} bytes)")
+            return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+        manifest_bytes = manifest_path.read_bytes()
+    except Exception as e:
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, f"Cannot read manifest.json: {e}")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
+    manifest = _read_manifest(manifest_bytes, errors)
     if errors:
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
-    # 3) Crypto (signature + merkle)
-    manifest_ok = verify_manifest_signature(root / "manifest.json", root / "sig/manifest.sig", root / "sig/publisher.pub")
-    if not manifest_ok:
-        _err(errors, ErrorCode.E_SIG_INVALID, "Signature verification failed")
+    # 3) Crypto (trusted anchor)
+    try:
+        trusted_pub = trusted_key_path.read_bytes()
+    except Exception as e:
+        _err(errors, ErrorCode.E_SIG_INVALID, f"Cannot read trusted key: {e}")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
-    computed = compute_merkle_root(root)
+    shard_pub_path = root / "sig/publisher.pub"
+    try:
+        shard_pub = shard_pub_path.read_bytes()
+    except Exception as e:
+        _err(errors, ErrorCode.E_SIG_INVALID, f"Cannot read shard publisher.pub: {e}")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
+    if shard_pub != trusted_pub:
+        _err(errors, ErrorCode.E_SIG_INVALID, "Shard publisher.pub does not match trusted key")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
+    manifest_ok = verify_manifest_signature(manifest_bytes, root / "sig/manifest.sig", trusted_key_path)
+    if not manifest_ok:
+        _err(errors, ErrorCode.E_SIG_INVALID, "Signature verification failed (trusted key)")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
+    try:
+        computed = compute_merkle_root(root)
+    except Exception as e:
+        _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Cannot compute Merkle root: {e}")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
     stored = manifest["integrity"]["merkle_root"]
     if computed != stored:
         _err(errors, ErrorCode.E_MERKLE_MISMATCH, f"Merkle root mismatch: computed {computed}, stored {stored}")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
-    # 4) Schema
+    # 4) Schema (bounded via metadata check)
     ent = _validate_parquet_schema(root / "graph/entities.parquet", ENTITIES_SCHEMA, errors)
     clm = _validate_parquet_schema(root / "graph/claims.parquet", CLAIMS_SCHEMA, errors)
     prv = _validate_parquet_schema(root / "graph/provenance.parquet", PROVENANCE_SCHEMA, errors)
@@ -201,7 +218,7 @@ def verify_shard(shard_path: str | Path) -> Dict[str, Any]:
     prov = prv.to_pylist()
     spans = spn.to_pylist()
 
-    # 5) Determinism and enums
+    # 5) IDs and references
     entity_ids: Set[str] = set()
     for row in entities:
         calc = recompute_entity_id(row["namespace"], row["label"])
@@ -221,61 +238,105 @@ def verify_shard(shard_path: str | Path) -> Dict[str, Any]:
             _err(errors, ErrorCode.E_ID_CLAIM, f"Claim ID mismatch for claim_id '{row['claim_id']}'")
         claim_ids.add(row["claim_id"])
 
-        # Claim references
         if row["subject"] not in entity_ids:
             _err(errors, ErrorCode.E_REF_ORPHAN, f"Claim subject '{row['subject']}' not found in entities")
         if row["object_type"] == "entity" and row["object"] not in entity_ids:
             _err(errors, ErrorCode.E_REF_ORPHAN, f"Claim object '{row['object']}' not found in entities")
 
-    # 6) Content hashes (SHA-256) and referential integrity
+    # 6) Content hashes and span verification (streaming, bounded)
     content_dir = root / "content"
     content_hashes: Set[str] = set()
-    content_map: Dict[str, bytes] = {}
+    content_map: Dict[str, Path] = {}
+
+    total_bytes = 0
+    file_count = 0
+
     try:
-        for p in content_dir.rglob("*"):
-            if p.is_file():
-                h = _sha256_file(p)
+        for dirpath, dirnames, filenames in os.walk(content_dir, followlinks=False):
+            dp = Path(dirpath)
+            dirnames[:] = [d for d in dirnames if not (dp / d).is_symlink()]
+
+            for name in filenames:
+                p = dp / name
+                if p.is_symlink():
+                    _err(errors, ErrorCode.E_REF_READ, f"Symlink not allowed in content/: {p}")
+                    continue
+                if not p.is_file():
+                    continue
+
+                file_count += 1
+                if file_count > MAX_CONTENT_FILES:
+                    _err(errors, ErrorCode.E_REF_READ, f"Too many files in content/ (limit {MAX_CONTENT_FILES})")
+                    raise RuntimeError("content file limit exceeded")
+
+                st = p.stat()
+                if st.st_size > MAX_FILE_BYTES:
+                    _err(errors, ErrorCode.E_REF_READ, f"Content file too large: {p} ({st.st_size} bytes)")
+                    continue
+
+                total_bytes += st.st_size
+                if total_bytes > MAX_TOTAL_BYTES:
+                    _err(errors, ErrorCode.E_REF_READ, f"Total content bytes exceeded limit ({MAX_TOTAL_BYTES} bytes)")
+                    raise RuntimeError("content byte limit exceeded")
+
+                st = p.stat()
+                if st.st_size > MAX_FILE_BYTES:
+                    _err(errors, ErrorCode.E_REF_READ, f"Content file exceeds size limit: {p.relative_to(root).as_posix()} ({st.st_size} bytes)")
+                    continue
+                h = _sha256_stream(p)
                 content_hashes.add(h)
-                content_map[h] = p.read_bytes()
+                content_map[h] = p
     except Exception as e:
         _err(errors, ErrorCode.E_REF_READ, f"Failed reading content files: {e}")
 
     for row in prov:
         if row["claim_id"] not in claim_ids:
             _err(errors, ErrorCode.E_REF_ORPHAN, f"Provenance claim_id '{row['claim_id']}' not found in claims")
+
         if row["source_hash"] not in content_hashes:
-            _err(errors, ErrorCode.E_REF_SOURCE, f"Provenance source_hash '{row['source_hash']}' not found in content/ (SHA-256)")
+            _err(errors, ErrorCode.E_REF_SOURCE, f"Provenance source_hash '{row['source_hash']}' not found in content/")
             continue
-        # Provenance byte range validity
+
         try:
-            b = content_map[row["source_hash"]]
+            p = content_map[row["source_hash"]]
             bs = int(row["byte_start"])
             be = int(row["byte_end"])
-            if bs < 0 or be < bs or be > len(b):
-                _err(errors, ErrorCode.E_REF_SOURCE, f"Provenance byte range out of bounds for source_hash {row['source_hash']}: {bs}-{be}")
+
+            fsize = p.stat().st_size
+            if bs < 0 or be < bs or be > fsize:
+                _err(errors, ErrorCode.E_REF_SOURCE, f"Provenance byte range out of bounds: {bs}-{be}")
         except Exception as e:
             _err(errors, ErrorCode.E_REF_READ, f"Provenance integrity check failed: {e}")
 
     for row in spans:
         if row["source_hash"] not in content_hashes:
-            _err(errors, ErrorCode.E_REF_SOURCE, f"Span source_hash '{row['source_hash']}' not found in content/ (SHA-256)")
+            _err(errors, ErrorCode.E_REF_SOURCE, f"Span source_hash '{row['source_hash']}' not found in content/")
             continue
-        # Byte-span integrity check (UTF-8 byte offsets)
+
         try:
-            b = content_map[row["source_hash"]]
+            p = content_map[row["source_hash"]]
             bs = int(row["byte_start"])
             be = int(row["byte_end"])
-            if bs < 0 or be < bs or be > len(b):
-                _err(errors, ErrorCode.E_REF_SOURCE, f"Span byte range out of bounds for source_hash {row['source_hash']}: {bs}-{be}")
-            else:
-                slice_bytes = b[bs:be]
-                try:
-                    slice_text = slice_bytes.decode('utf-8')
-                except UnicodeDecodeError:
-                    _err(errors, ErrorCode.E_REF_SOURCE, f"Span bytes are not valid UTF-8 for source_hash {row['source_hash']}: {bs}-{be}")
-                else:
-                    if slice_text != row["text"]:
-                        _err(errors, ErrorCode.E_REF_SOURCE, f"Span text mismatch at {bs}-{be} for source_hash {row['source_hash']}")
+
+            fsize = p.stat().st_size
+            if bs < 0 or be < bs or be > fsize:
+                _err(errors, ErrorCode.E_REF_SOURCE, f"Span byte range out of bounds: {bs}-{be}")
+                continue
+
+            length = be - bs
+            with p.open("rb") as f:
+                f.seek(bs)
+                slice_bytes = f.read(length)
+
+            try:
+                slice_text = slice_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                _err(errors, ErrorCode.E_REF_SOURCE, f"Span bytes invalid UTF-8 for {row['source_hash']}")
+                continue
+
+            if slice_text != row["text"]:
+                _err(errors, ErrorCode.E_REF_SOURCE, f"Span text mismatch for {row['source_hash']}")
+
         except Exception as e:
             _err(errors, ErrorCode.E_REF_READ, f"Span integrity check failed: {e}")
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axm-genesis"
-version = "1.0.0"
+version = "1.0.2"
 description = "Protocol for immutable, content-addressed knowledge graphs"
 readme = "README.md"
 license = {text = "Apache-2.0"}
