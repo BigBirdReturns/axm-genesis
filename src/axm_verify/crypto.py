@@ -8,14 +8,11 @@ import blake3
 from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
 
-# Limits (policy, not protocol)
-HASH_CHUNK_SIZE = 64 * 1024  # 64 KiB
-
-
 
 # Policy limits (implementation hardening, not protocol)
 # These bounds prevent verifier DoS via unreasonably large shard files.
 MAX_MERKLE_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
+MAX_FILE_BYTES = MAX_MERKLE_FILE_BYTES  # backward-compatible alias (policy)
 MAX_MERKLE_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
 MAX_MERKLE_FILES = 100_000
 HASH_CHUNK_SIZE = 64 * 1024

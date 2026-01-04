@@ -23,7 +23,7 @@ MAX_MANIFEST_BYTES = 256 * 1024  # 256 KiB
 MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB per file
 MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB total content scanned
 MAX_CONTENT_FILES = 10000
-MAX_PARQUET_ROWS = 1_000_000
+MAX_PARQUET_ROWS = 100_000
 HASH_CHUNK_SIZE = 64 * 1024
 
 
@@ -52,10 +52,33 @@ def _sha256_stream(path: Path) -> str:
     return h.hexdigest()
 
 
+
+def _preflight_parquet_limits(path: Path, errors: List[Dict[str, str]]) -> None:
+    """Bounded Parquet sanity check (no full reads).
+
+    This runs *before* Merkle verification so a maliciously large Parquet cannot force
+    expensive parsing or memory pressure even when the shard is already invalid.
+    """
+    try:
+        st = path.lstat()
+        if st.st_size > MAX_FILE_BYTES:
+            _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Parquet file exceeds size limit: {path.name} ({st.st_size} bytes)")
+            return
+        pf = pq.ParquetFile(path)
+        if pf.metadata is not None and pf.metadata.num_rows > MAX_PARQUET_ROWS:
+            _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Parquet row limit exceeded: {path.name} has {pf.metadata.num_rows} rows (limit {MAX_PARQUET_ROWS})")
+    except Exception as e:
+        _err(errors, ErrorCode.E_SCHEMA_READ, f"Failed reading Parquet metadata for {path.name}: {e}")
+
 def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
     if not root.exists() or not root.is_dir():
         _err(errors, ErrorCode.E_LAYOUT_MISSING, "Shard path does not exist or is not a directory")
         return False
+
+    for p in root.iterdir():
+        if p.is_symlink():
+            _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Symlink not allowed at shard root: {p.name}")
+            return False
 
     items = {p.name for p in root.iterdir()}
     missing = REQUIRED_ROOT_ITEMS - items
@@ -75,7 +98,8 @@ def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
         for name in filenames:
             p = dp / name
             if p.is_symlink():
-                continue
+                _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Symlink not allowed: {p.relative_to(root).as_posix()}")
+                return False
             if p.name.startswith("."):
                 _err(errors, ErrorCode.E_DOTFILE, f"Dotfile found: {p.relative_to(root).as_posix()}")
                 return False
@@ -259,35 +283,35 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
             for name in filenames:
                 p = dp / name
                 if p.is_symlink():
-                    _err(errors, ErrorCode.E_REF_READ, f"Symlink not allowed in content/: {p}")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Symlink not allowed in content/: {p}")
                     continue
                 if not p.is_file():
                     continue
 
                 file_count += 1
                 if file_count > MAX_CONTENT_FILES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Too many files in content/ (limit {MAX_CONTENT_FILES})")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Too many files in content/ (limit {MAX_CONTENT_FILES})")
                     raise RuntimeError("content file limit exceeded")
 
                 st = p.stat()
                 if st.st_size > MAX_FILE_BYTES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Content file too large: {p} ({st.st_size} bytes)")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Content file too large: {p} ({st.st_size} bytes)")
                     continue
 
                 total_bytes += st.st_size
                 if total_bytes > MAX_TOTAL_BYTES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Total content bytes exceeded limit ({MAX_TOTAL_BYTES} bytes)")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Total content bytes exceeded limit ({MAX_TOTAL_BYTES} bytes)")
                     raise RuntimeError("content byte limit exceeded")
 
                 st = p.stat()
                 if st.st_size > MAX_FILE_BYTES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Content file exceeds size limit: {p.relative_to(root).as_posix()} ({st.st_size} bytes)")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Content file exceeds size limit: {p.relative_to(root).as_posix()} ({st.st_size} bytes)")
                     continue
                 h = _sha256_stream(p)
                 content_hashes.add(h)
                 content_map[h] = p
     except Exception as e:
-        _err(errors, ErrorCode.E_REF_READ, f"Failed reading content files: {e}")
+        _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Failed reading content files: {e}")
 
     for row in prov:
         if row["claim_id"] not in claim_ids:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import shutil
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -21,6 +22,8 @@ from .schemas import (
     PROVENANCE_SCHEMA,
     SPANS_SCHEMA,
 )
+
+from .compiler_generic import CompilerConfig, compile_generic_shard
 
 CANONICAL_TEST_PRIVATE_KEY = bytes.fromhex(
     "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
@@ -397,6 +400,86 @@ def gold_fm21_11(fm_markdown: Path, out_dir: Path) -> None:
     _build_gold_shard(out_dir, fm_markdown)
     click.echo(f"Wrote gold shard to: {out_dir}")
 
+
+@main.command("compile")
+@click.argument("source", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option(
+    "--candidates",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="JSONL extracted claims",
+)
+@click.option(
+    "--out",
+    "out_dir",
+    required=True,
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    help="Output directory",
+)
+@click.option(
+    "--key",
+    default=None,
+    envvar="AXM_PRIVATE_KEY",
+    help="Publisher Ed25519 private key hex (32 bytes). If unset, uses the canonical test key.",
+)
+@click.option(
+    "--namespace",
+    default="generic/import",
+    show_default=True,
+    help="Entity namespace for this shard.",
+)
+@click.option(
+    "--publisher-id",
+    default="@cli_builder",
+    show_default=True,
+)
+@click.option(
+    "--publisher-name",
+    default="AXM CLI Builder",
+    show_default=True,
+)
+@click.option(
+    "--created-at",
+    required=True,
+    help="ISO8601 timestamp.",
+)
+def compile_cmd(
+    source: Path,
+    candidates: Path,
+    out_dir: Path,
+    key: str | None,
+    namespace: str,
+    publisher_id: str,
+    publisher_name: str,
+    created_at: str,
+) -> None:
+    """Compile a canonical source + candidates.jsonl into a verified AXM shard."""
+
+    if key is None:
+        priv_bytes = CANONICAL_TEST_PRIVATE_KEY
+    else:
+        try:
+            priv_bytes = bytes.fromhex(key)
+        except ValueError as e:
+            raise click.ClickException("Invalid private key hex") from e
+        if len(priv_bytes) != 32:
+            raise click.ClickException("Private key must be 32 bytes (64 hex chars)")
+
+    cfg = CompilerConfig(
+        source_path=source,
+        candidates_path=candidates,
+        out_dir=out_dir,
+        private_key=priv_bytes,
+        publisher_id=publisher_id,
+        publisher_name=publisher_name,
+        namespace=namespace,
+        created_at=created_at,
+    )
+
+    ok = compile_generic_shard(cfg)
+    if not ok:
+        raise SystemExit(1)
+    click.echo(f"Wrote shard to: {out_dir}")
 
 if __name__ == "__main__":
     main()
