@@ -2,6 +2,9 @@
 shards/** -text
 shards/**/*.txt -text
 
+tests/vectors/** -text
+tests/vectors/**/*.txt -text
+
 # Common binary formats
 *.parquet -text
 *.bin -text
