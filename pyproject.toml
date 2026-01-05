@@ -26,6 +26,7 @@ dev = [
 [project.scripts]
 axm-verify = "axm_verify.cli:main"
 axm-build = "axm_build.cli:main"
+axm-extract = "axm_extract.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
