@@ -1,10 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyd
-*.so
 *.egg-info/
-.eggs/
 dist/
 build/
 
@@ -19,4 +16,3 @@ tests/__pycache__/
 # OS/editor
 .DS_Store
 Thumbs.db
-cd
