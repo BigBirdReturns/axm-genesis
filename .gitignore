@@ -17,3 +17,6 @@ tests/__pycache__/
 .DS_Store
 Thumbs.db
 cd
+
+# Local smoke tests
+smoke/
