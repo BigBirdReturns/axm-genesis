@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axm-genesis"
-version = "1.0.2"
+version = "1.1.0"
 description = "Protocol for immutable, content-addressed knowledge graphs"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -26,8 +26,8 @@ dev = [
 ]
 
 [project.scripts]
-axm-judge = "axm_judge.cli:main"
 axm-extract = "axm_extract.cli:main"
+axm-judge = "axm_judge.cli:main"
 axm-verify = "axm_verify.cli:main"
 axm-build = "axm_build.cli:main"
 

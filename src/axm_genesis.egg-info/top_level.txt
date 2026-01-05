@@ -1,4 +1,0 @@
-axm_build
-axm_extract
-axm_judge
-axm_verify

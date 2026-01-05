@@ -129,3 +129,77 @@ AXM Genesis can be reimplemented in any language using only the following primit
 
 Correctness is defined by the ability to verify the gold shard byte-for-byte.
 Any verifier implementation that accepts the gold shard and rejects the invalid test vectors is conformant.
+
+## New tooling (v1.1.0)
+
+This release adds three production-grade components that sit **alongside** the shard protocol. They do **not** change the shard directory layout, manifest fields, hashing rules, or any existing “golden shard” fixtures.
+
+### 1) `axm-extract` (Pattern 4: Miner)
+
+Extract canonical, normalized UTF-8 text from PDF/DOCX.
+
+```bash
+axm-extract ./manual.pdf --out ./staging/manual/
+# writes:
+#   staging/manual/source.txt
+#   staging/manual/chunks.json
+```
+
+### 2) `axm-build compile` (Pattern 3: Factory)
+
+Compile a shard from canonical text plus a claims file.
+
+```bash
+axm-build compile ./staging/manual/source.txt \
+  --candidates ./staging/manual/candidates.jsonl \
+  --out ./shards/manual-v1 \
+  --created-at 2026-01-04T00:00:00Z
+```
+
+### 3) `axm-judge` (Pattern 2: Disk is Truth)
+
+Scan and adjudicate stream evidence:
+
+- Discovers residual records by scanning `cam_residuals.bin` (no JSON pointers).
+- Verifies latent offsets against strict math for drift detection.
+- Writes an evidence index at `evidence/streams.parquet`.
+
+```bash
+axm-judge ./capsule_dir
+```
+
+See `STREAM_FORMAT.md` for the on-disk stream contract.
+
+## Running without a local environment
+
+You can run AXM Genesis in any hosted Python environment:
+
+- **GitHub Codespaces**: open the repository in a codespace, then run `pip install -e .`.
+- **GitHub Actions**: run the test suite on every push.
+- **Google Colab**: clone the repo and run the CLIs in a notebook.
+
+Minimal verification commands:
+
+```bash
+pip install -e .
+pytest -q
+axm-verify --help
+axm-build --help
+axm-extract --help
+axm-judge --help
+```
+
+## End-to-end smoke test (no PDFs required)
+
+```bash
+mkdir -p smoke/staging
+printf "The unit must maintain silence.\n" > smoke/staging/source.txt
+printf '{"subject":"Unit","predicate":"must maintain","object":"silence","evidence":"maintain silence","tier":0}\n' > smoke/staging/candidates.jsonl
+
+axm-build compile smoke/staging/source.txt \
+  --candidates smoke/staging/candidates.jsonl \
+  --out smoke/shard_v1 \
+  --created-at 2026-01-04T00:00:00Z
+
+axm-verify smoke/shard_v1 --trusted-key smoke/shard_v1/sig/publisher.pub
+```

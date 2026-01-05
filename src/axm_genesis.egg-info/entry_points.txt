@@ -1,5 +1,0 @@
-[console_scripts]
-axm-build = axm_build.cli:main
-axm-extract = axm_extract.cli:main
-axm-judge = axm_judge.cli:main
-axm-verify = axm_verify.cli:main
