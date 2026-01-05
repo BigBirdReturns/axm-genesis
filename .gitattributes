@@ -1,0 +1,9 @@
+# Never rewrite bytes inside shards
+shards/** -text
+shards/**/*.txt -text
+
+# Common binary formats
+*.parquet -text
+*.bin -text
+*.sig -text
+*.pub -text
