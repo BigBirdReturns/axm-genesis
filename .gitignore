@@ -19,3 +19,4 @@ tests/__pycache__/
 # OS/editor
 .DS_Store
 Thumbs.db
+cd
