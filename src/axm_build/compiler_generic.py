@@ -55,7 +55,7 @@ def _find_span_strict(content_bytes: bytes, needle: str) -> Tuple[int, int]:
         raise ValueError(f"Evidence not found: {needle[:80]!r}")
     if count > 1:
         raise ValueError(f"Ambiguous evidence: found {count} matches for {needle[:40]!r}")
-
+    
     idx = content_bytes.find(needle_bytes)
     return idx, idx + len(needle_bytes)
 
@@ -69,25 +69,25 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
     - Output Parquet files are written deterministically.
     - The compiled shard must pass axm-verify using the publisher key.
     """
-
+    
     if not cfg.source_path.exists():
         raise FileNotFoundError(f"Source not found: {cfg.source_path}")
     if not cfg.candidates_path.exists():
         raise FileNotFoundError(f"Candidates not found: {cfg.candidates_path}")
-
+    
     raw_text = cfg.source_path.read_text(encoding="utf-8", errors="strict")
     norm_text = normalize_source_text(raw_text)
     content_bytes = norm_text.encode("utf-8")
     source_hash = hashlib.sha256(content_bytes).hexdigest()
-
+    
     # Fresh output
     if cfg.out_dir.exists():
         shutil.rmtree(cfg.out_dir)
-    for d in ("content", "graph", "evidence", "sig", "governance"):
+    for d in ("content", "graph", "evidence", "sig"):
         (cfg.out_dir / d).mkdir(parents=True, exist_ok=True)
-
+    
     (cfg.out_dir / "content" / "source.txt").write_bytes(content_bytes)
-
+    
     # Load candidates
     candidates: List[Dict[str, Any]] = []
     with cfg.candidates_path.open("r", encoding="utf-8") as f:
@@ -96,10 +96,10 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
             if not line:
                 continue
             candidates.append(json.loads(line))
-
+    
     if not candidates:
         return False
-
+    
     # Pass 1: entities
     entities: Dict[str, str] = {}
     for c in candidates:
@@ -107,13 +107,13 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
         if not subj:
             continue
         entities[subj] = recompute_entity_id(cfg.namespace, subj)
-
+    
         obj_type = c.get("object_type", "entity")
         if obj_type == "entity":
             obj = str(c.get("object", "")).strip()
             if obj:
                 entities[obj] = recompute_entity_id(cfg.namespace, obj)
-
+    
     ent_rows: List[Dict[str, Any]] = []
     for label, eid in entities.items():
         ent_rows.append(
@@ -124,40 +124,40 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
                 "entity_type": "concept",
             }
         )
-
+    
     # Pass 2: claims + evidence
     claim_rows: List[Dict[str, Any]] = []
     prov_rows: List[Dict[str, Any]] = []
     span_rows: List[Dict[str, Any]] = []
-
+    
     for c in candidates:
         subj_label = str(c.get("subject", "")).strip()
         pred = str(c.get("predicate", "")).strip()
         obj_label_or_val = str(c.get("object", "")).strip()
         evidence = c.get("evidence") or c.get("evidence_quote")
-
+    
         if not subj_label or not pred or not evidence:
             continue
-
+    
         obj_type = c.get("object_type", "entity")
         if obj_type not in VALID_OBJECT_TYPES:
             continue
-
+    
         try:
             tier = int(c.get("tier", 0))
         except Exception:
             tier = 0
         if tier not in VALID_TIERS:
             tier = 0
-
+    
         subj_id = entities.get(subj_label) or recompute_entity_id(cfg.namespace, subj_label)
-
+    
         if obj_type == "entity":
             obj_id = entities.get(obj_label_or_val) or recompute_entity_id(cfg.namespace, obj_label_or_val)
             obj_val = obj_id
         else:
             obj_val = obj_label_or_val
-
+    
         # Evidence span
         try:
             byte_start, byte_end = _find_span_strict(content_bytes, str(evidence))
@@ -166,12 +166,12 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
             if msg.startswith("Evidence not found"):
                 continue
             raise
-
+    
         cid = recompute_claim_id(subj_id, pred, obj_val, obj_type)
-
+    
         prov_id = _b32_id("p_", f"{source_hash}\x00{byte_start}\x00{byte_end}")
         span_id = _b32_id("s_", f"{source_hash}\x00{byte_start}\x00{byte_end}\x00{evidence}")
-
+    
         claim_rows.append(
             {
                 "claim_id": cid,
@@ -200,16 +200,16 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
                 "text": str(evidence),
             }
         )
-
+    
     if not claim_rows:
         return False
-
+    
     # Write tables deterministically
     write_parquet_deterministic(cfg.out_dir / "graph" / "entities.parquet", ent_rows, ENTITIES_SCHEMA, "entity_id")
     write_parquet_deterministic(cfg.out_dir / "graph" / "claims.parquet", claim_rows, CLAIMS_SCHEMA, "claim_id")
     write_parquet_deterministic(cfg.out_dir / "graph" / "provenance.parquet", prov_rows, PROVENANCE_SCHEMA, "provenance_id")
     write_parquet_deterministic(cfg.out_dir / "evidence" / "spans.parquet", span_rows, SPANS_SCHEMA, "span_id")
-
+    
     # Manifest + signatures
     merkle_root = compute_merkle_root(cfg.out_dir)
     manifest = {
@@ -223,23 +223,23 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
         "integrity": {"algorithm": "blake3", "merkle_root": merkle_root},
         "statistics": {"entities": len(ent_rows), "claims": len(claim_rows)},
     }
-
+    
     manifest_bytes = dumps_canonical_json(manifest)
     (cfg.out_dir / "manifest.json").write_bytes(manifest_bytes)
-
+    
     sk = signing_key_from_private_key_bytes(cfg.private_key)
     (cfg.out_dir / "sig" / "publisher.pub").write_bytes(bytes(sk.verify_key))
     (cfg.out_dir / "sig" / "manifest.sig").write_bytes(sk.sign(manifest_bytes).signature)
-
+    
     # Verify using the publisher key as trusted anchor for this build.
     with tempfile.NamedTemporaryFile(delete=False) as tf:
         tf.write(bytes(sk.verify_key))
         trusted_path = Path(tf.name)
-
+    
     try:
         res = verify_shard(cfg.out_dir, trusted_path)
     finally:
         if trusted_path.exists():
             os.unlink(trusted_path)
-
+    
     return res.get("status") == "PASS"
