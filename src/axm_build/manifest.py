@@ -13,3 +13,7 @@ def dumps_canonical_json(obj: Dict[str, Any]) -> bytes:
 
     s = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return s.encode("utf-8")
+
+def canonical_manifest_json(obj: Dict[str, Any]) -> bytes:
+    """Backward-compatible alias used by tests and older callers."""
+    return dumps_canonical_json(obj)
