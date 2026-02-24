@@ -1,131 +1,84 @@
 # AXM Genesis
 
-**Knowledge you can own, verify, and keep.**
+**Compiled knowledge with cryptographic provenance.**
 
-## The Problem
-
-Right now, almost all "AI knowledge" has these properties:
-
-- It only exists at inference time
-- It is recomputed over and over
-- You cannot inspect it
-- You cannot move it
-- You cannot verify where it came from
-- You cannot keep it without paying rent
-
-Even when the answer is correct, it evaporates.
-
-## The Solution
-
-AXM Genesis compiles documents into **signed, verifiable knowledge shards** that work offline, forever.
-
-It splits AI into two phases:
-
-**Phase 1: Expensive extraction (done once)**
-- Large models read documents
-- Extract entities and claims
-- Bind every claim to byte-level source evidence
-- Sign and Merkle-root the result
-- Freeze it
-
-**Phase 2: Cheap use (forever)**
-- Small models, scripts, or humans query the frozen shard
-- Offline, deterministically, without recomputation
-- Without trusting the builder
-- Without calling an API
-
-Knowledge becomes **compiled**, not performed.
+AXM Genesis is a specification and toolchain for creating signed, verifiable knowledge shards that work offline, forever. It splits AI into two phases: expensive extraction (done once) and cheap retrieval (forever, without recomputation).
 
 ## What's in a Shard
 
-A shard is a directory containing:
+A shard is a directory containing structured claims extracted from source documents, with byte-level provenance linking every claim to the exact text that supports it.
 
 ```
-manifest.json          # Signed metadata + Merkle root
-sig/                   # Ed25519 signature + public key
-content/               # Source documents
-graph/
-  entities.parquet     # Things (procedures, conditions, tools)
-  claims.parquet       # Facts (tourniquet treats severe_bleeding)
-  provenance.parquet   # Which claim came from which bytes
-evidence/
-  spans.parquet        # The actual source text for each claim
+shard/
+├── manifest.json          # Metadata, Merkle root, cryptographic suite
+├── sig/
+│   ├── manifest.sig       # Ed25519 or ML-DSA-44 signature
+│   └── publisher.pub      # Public key
+├── content/
+│   └── source.txt         # Original document (byte-addressable)
+├── graph/
+│   ├── entities.parquet   # Things (procedures, conditions, statutes)
+│   ├── claims.parquet     # Facts (tourniquet treats severe_bleeding)
+│   └── provenance.parquet # Which claim came from which bytes
+└── evidence/
+    └── spans.parquet      # The actual source text for each claim
 ```
 
-Every claim traces back to exact bytes in the source document. No hallucination can survive verification.
+Every claim traces back to exact bytes in the source document.
 
 ## Quick Start
 
 ```bash
-# Install
 pip install -e .
 
 # Verify the gold shard
-axm-verify shard shards/gold/fm21-11-hemorrhage-v1/ --trusted-key keys/canonical_test_publisher.pub
-# {"status": "PASS", "error_count": 0, "errors": []}
+axm-verify shard shards/gold/fm21-11-hemorrhage-v1/ \
+  --trusted-key keys/canonical_test_publisher.pub
 
 # Query it
 python examples/query_shard.py shards/gold/fm21-11-hemorrhage-v1/
 ```
 
+## Cryptographic Suites
+
+Genesis v1.1.0 supports two signing suites:
+
+| Suite | Algorithm | Key Size | Signature Size | Default |
+|-------|-----------|----------|----------------|---------|
+| Ed25519 (legacy) | Ed25519 | 32 B | 64 B | Pre-1.1.0 shards |
+| `axm-blake3-mldsa44` | ML-DSA-44 (FIPS 204) | 1312 B | 2420 B | New shards |
+
+Both suites use Blake3 Merkle trees and SHA-256 content hashing. The signature algorithm is the only difference. Ed25519 shards remain valid indefinitely.
+
 ## The Gold Shard
 
-The repository includes a gold shard extracted from FM 21-11, the US Army's field manual for first aid. It contains:
+The repository includes a gold shard extracted from FM 21-11, the US Army field manual for first aid:
 
-- 8 entities (procedures like "tourniquet", conditions like "severe bleeding")
-- 6 claims with byte-level provenance
-- Signed with a canonical test key
+- 8 entities, 6 claims with byte-level provenance
+- Signed with Ed25519 (canonical test key)
 - Passes verification
-
-This shard proves the system works in a domain where hallucination is unacceptable.
-
-## Why This Matters
-
-Cloud AI companies profit because:
-- Every question triggers compute
-- Every answer disappears
-- You must ask again tomorrow
-
-AXM Genesis inverts this:
-- Pay once to compile knowledge
-- Keep the output forever
-- Copy it, verify it, run it offline
-- Nobody can revoke it
-
-This is the same shift Linux made: from time-sharing to personal computing, from vendor permission to user possession.
-
-AXM does that for knowledge.
+- Defines correctness: any verifier that accepts this shard and rejects the invalid test vectors is conformant
 
 ## Documentation
 
-- [Specification](spec/v1.0/SPECIFICATION.md) - The frozen protocol definition
-- [Conformance](spec/v1.0/CONFORMANCE.md) - Minimum requirements for valid shards
-- [Contributing](CONTRIBUTING.md) - How to propose changes (RFC process)
+- [Specification](spec/v1.0/SPECIFICATION.md) — The frozen protocol (Sections 1-10) plus the v1.1.0 cryptographic suites addendum (Section 11)
+- [Conformance](spec/v1.0/CONFORMANCE.md) — Minimum requirements for valid shards and verifiers
+- [Contributing](CONTRIBUTING.md) — RFC process for proposing specification changes
+- [Changelog](CHANGELOG.md) — Release history including security patches
 
-## Project Status
+## Reimplementation
 
-This is a working protocol with:
-- A reference verifier (`axm-verify`)
-- A gold shard that passes verification
-- Test vectors for reimplementation
-- Governance documents for community development
+AXM Genesis can be reimplemented in any language using:
 
-It is ready for use and extension.
+- Canonical UTF-8 text normalization (NFC, case-fold, collapse whitespace)
+- Deterministic JSON serialization (sorted keys, no whitespace)
+- BLAKE3 for Merkle hashing
+- SHA-256 for content hashing
+- Ed25519 or ML-DSA-44 for signatures
+- Parquet with explicit schemas and deterministic row ordering
+
+Correctness is defined by the ability to verify the gold shard and reject the invalid test vectors.
 
 ## License
 
 Apache-2.0
-
-
-## Reimplementation Notes
-
-AXM Genesis can be reimplemented in any language using only the following primitives:
-
-- Canonical UTF-8 text normalization (lowercase, trim, collapse whitespace)
-- Deterministic JSON serialization (sorted keys, no whitespace)
-- BLAKE3 for content and Merkle hashing
-- Ed25519 for signatures
-- Parquet files with explicit schemas and deterministic row ordering
-
-Correctness is defined by the ability to verify the gold shard byte-for-byte.
-Any verifier implementation that accepts the gold shard and rejects the invalid test vectors is conformant.

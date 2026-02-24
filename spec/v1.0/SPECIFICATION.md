@@ -1,6 +1,6 @@
 # AXM Genesis Specification v1.0.0 (Frozen)
 
-Status: Normative and frozen.
+Status: Normative and frozen. Section 11 is an addendum added in v1.1.0 that extends the specification without breaking backward compatibility.
 
 This document defines the AXM Genesis shard format, identifiers, and verification rules.
 
@@ -26,11 +26,13 @@ A shard is a directory with this required layout:
 
 The verifier treats missing required paths as an error.
 
+An optional `ext/` directory may contain extension parquet files. Extensions are Merkle-covered but not required. See Section 10.
+
 ## 3. Cryptographic Primitives
 
 - Content hash: SHA-256 over the raw bytes of a content file. Hex lowercase.
 - Merkle hash: Blake3.
-- Signature: Ed25519 over the raw bytes of `manifest.json`.
+- Signature: Ed25519 over the raw bytes of `manifest.json` (default suite). For alternative suites, see Section 11.
 
 ## 4. Merkle Root
 
@@ -83,9 +85,14 @@ For canonical artifacts (gold shard and test vectors), the canonical JSON encodi
 - `statistics.entities`: integer
 - `statistics.claims`: integer
 
+### 5.3 Optional fields
+
+- `suite`: string identifying the cryptographic suite (Section 11). Absent means Ed25519 legacy.
+- `extensions`: array of extension identifiers. Present only when `ext/` is non-empty.
+
 ## 6. Identifiers
 
-AXM defines stable, content-independent identifiers for entities and claims.
+AXM defines stable, content-addressed identifiers for entities and claims.
 
 ### 6.1 Canonicalization
 
@@ -124,43 +131,43 @@ All tables are Parquet files with explicit Arrow schemas.
 
 ### 7.1 entities.parquet
 
-Schema:
-
-- entity_id: string
-- namespace: string
-- label: string
-- entity_type: string
+| Column | Type |
+|--------|------|
+| entity_id | string |
+| namespace | string |
+| label | string |
+| entity_type | string |
 
 ### 7.2 claims.parquet
 
-Schema:
-
-- claim_id: string
-- subject: string (entity_id)
-- predicate: string
-- object: string (entity_id or literal)
-- object_type: string, one of: `entity`, `literal:string`
-- tier: int8, 0 to 2
+| Column | Type | Notes |
+|--------|------|-------|
+| claim_id | string | |
+| subject | string | entity_id |
+| predicate | string | |
+| object | string | entity_id or literal value |
+| object_type | string | `entity` or `literal:string` |
+| tier | int8 | 0 to 2 |
 
 ### 7.3 provenance.parquet
 
-Schema:
-
-- provenance_id: string
-- claim_id: string
-- source_hash: string (SHA-256 hex of a content file)
-- byte_start: int64
-- byte_end: int64
+| Column | Type | Notes |
+|--------|------|-------|
+| provenance_id | string | |
+| claim_id | string | |
+| source_hash | string | SHA-256 hex of a content file |
+| byte_start | int64 | |
+| byte_end | int64 | |
 
 ### 7.4 spans.parquet
 
-Schema:
-
-- span_id: string
-- source_hash: string (SHA-256 hex of a content file)
-- byte_start: int64
-- byte_end: int64
-- text: string
+| Column | Type | Notes |
+|--------|------|-------|
+| span_id | string | |
+| source_hash | string | SHA-256 hex of a content file |
+| byte_start | int64 | |
+| byte_end | int64 | |
+| text | string | |
 
 ## 8. Evidence Byte Offsets
 
@@ -183,7 +190,7 @@ A verifier must:
 
 1. Validate layout and required paths
 2. Compute Merkle root and compare to `manifest.integrity.merkle_root`
-3. Verify Ed25519 signature of `manifest.json` using `sig/publisher.pub`
+3. Verify signature of `manifest.json` using `sig/publisher.pub` and the appropriate suite (Section 11)
 4. Validate Parquet schemas for all required tables
 5. Validate references:
    - claims.subject exists in entities
@@ -191,6 +198,61 @@ A verifier must:
    - provenance.claim_id exists in claims
    - provenance.source_hash exists in content hashes
    - spans.source_hash exists in content hashes
-6. Validate evidence byte offset invariants in Section 8
+6. Validate evidence byte offset invariants (Section 8)
 
 The reference verifier is `axm-verify` in this repository.
+
+## 10. Extensions
+
+The optional `ext/` directory at shard root holds extension parquet files.
+
+Rules:
+
+- `ext/` is covered by the Merkle tree (Section 4)
+- Verifiers that do not understand extensions treat `ext/` as opaque files
+- Extensions do not affect core verification (Sections 1-9)
+- When `ext/` is non-empty, `manifest.extensions` lists the extension identifiers
+- When `ext/` is empty or absent, `manifest.extensions` is omitted to preserve hash stability
+
+Extension naming convention: `ext/<name>@<version>.parquet`
+
+## 11. Cryptographic Suites
+
+*Added in v1.1.0. This section extends the specification without breaking shards created under v1.0.0.*
+
+### 11.1 Suite identification
+
+The optional `suite` field in `manifest.json` identifies which cryptographic suite was used to sign the shard. If `suite` is absent, the shard uses the Ed25519 legacy suite.
+
+### 11.2 Ed25519 (legacy, default)
+
+- Suite identifier: absent (no `suite` field) or `"ed25519"`
+- Signature algorithm: Ed25519
+- Public key: 32 bytes
+- Signature: 64 bytes
+- Signature input: raw bytes of `manifest.json`
+
+### 11.3 axm-blake3-mldsa44 (post-quantum)
+
+- Suite identifier: `"axm-blake3-mldsa44"`
+- Signature algorithm: ML-DSA-44 (FIPS 204, also known as Dilithium2)
+- Public key: 1312 bytes
+- Signature: 2420 bytes
+- Signature input: raw bytes of `manifest.json`
+- Secret key: 2528 bytes; combined format `sk || pk` = 3840 bytes
+- Signatures are deterministic: same key + same message = same signature
+
+### 11.4 Suite detection
+
+A verifier determines the suite from:
+
+1. The `suite` field in `manifest.json` (if present), or
+2. The size of `sig/publisher.pub` (32 bytes = Ed25519, 1312 bytes = ML-DSA-44)
+
+A verifier that does not support a given suite must report an error rather than silently skip verification.
+
+### 11.5 Backward compatibility
+
+- Shards signed with Ed25519 remain valid indefinitely
+- New shards default to `axm-blake3-mldsa44` for post-quantum security
+- The Merkle tree, content hashing, identifiers, and all non-signature operations are identical across suites

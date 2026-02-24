@@ -6,8 +6,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
-import pyarrow as pa
-import pyarrow.parquet as pq
+try:
+    import pyarrow as pa  # type: ignore
+    import pyarrow.parquet as pq  # type: ignore
+except Exception:
+    pa = None  # type: ignore
+    pq = None  # type: ignore
 
 from .const import (
     ErrorCode,
@@ -23,7 +27,7 @@ MAX_MANIFEST_BYTES = 256 * 1024  # 256 KiB
 MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB per file
 MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB total content scanned
 MAX_CONTENT_FILES = 10000
-MAX_PARQUET_ROWS = 1_000_000
+MAX_PARQUET_ROWS = 100_000
 HASH_CHUNK_SIZE = 64 * 1024
 
 
@@ -52,14 +56,37 @@ def _sha256_stream(path: Path) -> str:
     return h.hexdigest()
 
 
+
+def _preflight_parquet_limits(path: Path, errors: List[Dict[str, str]]) -> None:
+    """Bounded Parquet sanity check (no full reads).
+
+    This runs *before* Merkle verification so a maliciously large Parquet cannot force
+    expensive parsing or memory pressure even when the shard is already invalid.
+    """
+    try:
+        st = path.lstat()
+        if st.st_size > MAX_FILE_BYTES:
+            _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Parquet file exceeds size limit: {path.name} ({st.st_size} bytes)")
+            return
+        pf = pq.ParquetFile(path)
+        if pf.metadata is not None and pf.metadata.num_rows > MAX_PARQUET_ROWS:
+            _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Parquet row limit exceeded: {path.name} has {pf.metadata.num_rows} rows (limit {MAX_PARQUET_ROWS})")
+    except Exception as e:
+        _err(errors, ErrorCode.E_SCHEMA_READ, f"Failed reading Parquet metadata for {path.name}: {e}")
+
 def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
     if not root.exists() or not root.is_dir():
         _err(errors, ErrorCode.E_LAYOUT_MISSING, "Shard path does not exist or is not a directory")
         return False
 
+    for p in root.iterdir():
+        if p.is_symlink():
+            _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Symlink not allowed at shard root: {p.name}")
+            return False
+
     items = {p.name for p in root.iterdir()}
     missing = REQUIRED_ROOT_ITEMS - items
-    extra = items - REQUIRED_ROOT_ITEMS
+    extra = (items - REQUIRED_ROOT_ITEMS) - {"ext"}
     if missing:
         _err(errors, ErrorCode.E_LAYOUT_MISSING, f"Missing required root items: {sorted(missing)}")
     if extra:
@@ -75,7 +102,8 @@ def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
         for name in filenames:
             p = dp / name
             if p.is_symlink():
-                continue
+                _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Symlink not allowed: {p.relative_to(root).as_posix()}")
+                return False
             if p.name.startswith("."):
                 _err(errors, ErrorCode.E_DOTFILE, f"Dotfile found: {p.relative_to(root).as_posix()}")
                 return False
@@ -105,46 +133,84 @@ def _read_manifest(manifest_bytes: bytes, errors: List[Dict[str, str]]) -> Dict[
     return data
 
 
-def _validate_parquet_schema(path: Path, expected: pa.Schema, errors: List[Dict[str, str]]) -> pa.Table | None:
+def _validate_parquet_schema(path: Path, expected: Any, errors: List[Dict[str, str]]) -> Any | None:
     if not path.exists():
         _err(errors, ErrorCode.E_SCHEMA_MISSING, f"Missing file: {path.name}")
         return None
 
+    if path.stat().st_size > MAX_FILE_BYTES:
+        _err(errors, ErrorCode.E_SCHEMA_READ, f"{path.name} exceeds file size limit ({MAX_FILE_BYTES} bytes)")
+        return None
+
+    if pa is not None and pq is not None:
+        try:
+            pf = pq.ParquetFile(path)
+            if pf.metadata is not None and pf.metadata.num_rows > MAX_PARQUET_ROWS:
+                _err(errors, ErrorCode.E_SCHEMA_READ, f"{path.name} exceeds row limit ({MAX_PARQUET_ROWS})")
+                return None
+            table = pf.read()
+        except Exception as e:
+            _err(errors, ErrorCode.E_SCHEMA_READ, f"Cannot read {path.name}: {e}")
+            return None
+
+        if len(table.schema) != len(expected):
+            _err(errors, ErrorCode.E_SCHEMA_TYPE, f"{path.name} column count mismatch")
+            return None
+
+        for i, field in enumerate(table.schema):
+            exp = expected[i]
+            if field.name != exp.name or field.type != exp.type:
+                _err(
+                    errors,
+                    ErrorCode.E_SCHEMA_TYPE,
+                    f"{path.name} mismatch at col {i}: expected {exp.name}({exp.type}), got {field.name}({field.type})",
+                )
+                return None
+
+        for name in table.column_names:
+            if table[name].null_count > 0:
+                _err(errors, ErrorCode.E_SCHEMA_NULL, f"{path.name} column {name} contains nulls")
+                return None
+
+        return table
+
+    # DuckDB fallback (no pyarrow)
     try:
-        if path.stat().st_size > MAX_FILE_BYTES:
-            _err(errors, ErrorCode.E_SCHEMA_READ, f"{path.name} exceeds file size limit ({MAX_FILE_BYTES} bytes)")
+        import duckdb
+
+        con = duckdb.connect(database=":memory:")
+        desc = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{str(path)}')").fetchall()
+        # desc rows: (column_name, column_type, null, key, default, extra) in duckdb
+        cols = [(r[0], r[1]) for r in desc]
+
+        exp_cols = expected if isinstance(expected, list) else []
+        if len(cols) != len(exp_cols):
+            _err(errors, ErrorCode.E_SCHEMA_TYPE, f"{path.name} column count mismatch")
             return None
 
-        pf = pq.ParquetFile(path)
-        if pf.metadata is not None and pf.metadata.num_rows > MAX_PARQUET_ROWS:
-            _err(errors, ErrorCode.E_SCHEMA_READ, f"{path.name} exceeds row limit ({MAX_PARQUET_ROWS})")
-            return None
+        for i, ((name, typ), (exp_name, exp_typ)) in enumerate(zip(cols, exp_cols)):
+            if name != exp_name:
+                _err(errors, ErrorCode.E_SCHEMA_TYPE, f"{path.name} mismatch at col {i}: expected {exp_name}, got {name}")
+                return None
+            # Type comparison is best-effort (DuckDB may use synonyms).
+            if exp_typ.upper() not in typ.upper():
+                _err(errors, ErrorCode.E_SCHEMA_TYPE, f"{path.name} mismatch at col {i}: expected {exp_typ}, got {typ}")
+                return None
 
-        table = pf.read()
+        # Null checks
+        for name, _typ in cols:
+            n_null = con.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{str(path)}') WHERE {duckdb.quote_identifier(name)} IS NULL"
+            ).fetchone()[0]
+            if n_null and n_null > 0:
+                _err(errors, ErrorCode.E_SCHEMA_NULL, f"{path.name} column {name} contains nulls")
+                return None
+
+        return True
     except Exception as e:
         _err(errors, ErrorCode.E_SCHEMA_READ, f"Cannot read {path.name}: {e}")
         return None
 
-    if len(table.schema) != len(expected):
-        _err(errors, ErrorCode.E_SCHEMA_TYPE, f"{path.name} column count mismatch")
-        return None
-
-    for i, field in enumerate(table.schema):
-        exp = expected[i]
-        if field.name != exp.name or field.type != exp.type:
-            _err(
-                errors,
-                ErrorCode.E_SCHEMA_TYPE,
-                f"{path.name} mismatch at col {i}: expected {exp.name}({exp.type}), got {field.name}({field.type})",
-            )
-            return None
-
-    for name in table.column_names:
-        if table[name].null_count > 0:
-            _err(errors, ErrorCode.E_SCHEMA_NULL, f"{path.name} column {name} contains nulls")
-            return None
-
-    return table
 
 
 def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "strict") -> Dict[str, Any]:
@@ -170,6 +236,12 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
     if errors:
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
+    # Determine suite: if manifest has "suite" field, use it. Otherwise legacy ed25519.
+    suite = manifest.get("suite", "ed25519")
+    if suite not in ("ed25519", "axm-blake3-mldsa44"):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, f"Unknown suite: {suite}")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
     # 3) Crypto (trusted anchor)
     try:
         trusted_pub = trusted_key_path.read_bytes()
@@ -188,13 +260,21 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
         _err(errors, ErrorCode.E_SIG_INVALID, "Shard publisher.pub does not match trusted key")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
-    manifest_ok = verify_manifest_signature(manifest_bytes, root / "sig/manifest.sig", trusted_key_path)
+    # Validate key size matches suite
+    from .crypto import SUITE_SIZES
+    expected_pk_size = SUITE_SIZES.get(suite, {}).get("pk")
+    if expected_pk_size and len(shard_pub) != expected_pk_size:
+        _err(errors, ErrorCode.E_SIG_INVALID,
+             f"Publisher key size {len(shard_pub)} doesn't match suite {suite} (expected {expected_pk_size})")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
+    manifest_ok = verify_manifest_signature(manifest_bytes, root / "sig/manifest.sig", trusted_key_path, suite=suite)
     if not manifest_ok:
         _err(errors, ErrorCode.E_SIG_INVALID, "Signature verification failed (trusted key)")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
     try:
-        computed = compute_merkle_root(root)
+        computed = compute_merkle_root(root, suite=suite)
     except Exception as e:
         _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Cannot compute Merkle root: {e}")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
@@ -259,35 +339,35 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
             for name in filenames:
                 p = dp / name
                 if p.is_symlink():
-                    _err(errors, ErrorCode.E_REF_READ, f"Symlink not allowed in content/: {p}")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Symlink not allowed in content/: {p}")
                     continue
                 if not p.is_file():
                     continue
 
                 file_count += 1
                 if file_count > MAX_CONTENT_FILES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Too many files in content/ (limit {MAX_CONTENT_FILES})")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Too many files in content/ (limit {MAX_CONTENT_FILES})")
                     raise RuntimeError("content file limit exceeded")
 
                 st = p.stat()
                 if st.st_size > MAX_FILE_BYTES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Content file too large: {p} ({st.st_size} bytes)")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Content file too large: {p} ({st.st_size} bytes)")
                     continue
 
                 total_bytes += st.st_size
                 if total_bytes > MAX_TOTAL_BYTES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Total content bytes exceeded limit ({MAX_TOTAL_BYTES} bytes)")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Total content bytes exceeded limit ({MAX_TOTAL_BYTES} bytes)")
                     raise RuntimeError("content byte limit exceeded")
 
                 st = p.stat()
                 if st.st_size > MAX_FILE_BYTES:
-                    _err(errors, ErrorCode.E_REF_READ, f"Content file exceeds size limit: {p.relative_to(root).as_posix()} ({st.st_size} bytes)")
+                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Content file exceeds size limit: {p.relative_to(root).as_posix()} ({st.st_size} bytes)")
                     continue
                 h = _sha256_stream(p)
                 content_hashes.add(h)
                 content_map[h] = p
     except Exception as e:
-        _err(errors, ErrorCode.E_REF_READ, f"Failed reading content files: {e}")
+        _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Failed reading content files: {e}")
 
     for row in prov:
         if row["claim_id"] not in claim_ids:
