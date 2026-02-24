@@ -34,12 +34,14 @@ An optional `ext/` directory may contain extension parquet files. Extensions are
 - Merkle hash: Blake3.
 - Signature: Ed25519 over the raw bytes of `manifest.json` (default suite). For alternative suites, see Section 11.
 
-## 4. Merkle Root
+## 4. Merkle Root (Ed25519 legacy suite)
 
 The Merkle root commits to all files in the shard except:
 
 - `manifest.json`
 - all files under `sig/`
+
+This section defines the legacy Merkle construction used when the manifest `suite` field is absent or set to "ed25519". The post-quantum suite uses a different Merkle construction defined in Section 11.3.
 
 Leaf hash for each included file:
 
@@ -231,6 +233,7 @@ The optional `suite` field in `manifest.json` identifies which cryptographic sui
 - Public key: 32 bytes
 - Signature: 64 bytes
 - Signature input: raw bytes of `manifest.json`
+- Merkle construction: legacy (Section 4)
 
 ### 11.3 axm-blake3-mldsa44 (post-quantum)
 
@@ -239,6 +242,12 @@ The optional `suite` field in `manifest.json` identifies which cryptographic sui
 - Public key: 1312 bytes
 - Signature: 2420 bytes
 - Signature input: raw bytes of `manifest.json`
+- Merkle construction:
+  - Leaf: `Blake3(0x00 + relpath_utf8 + 0x00 + file_bytes)`
+  - Leaves sorted by UTF-8 byte order of `relpath_utf8`
+  - Node: `Blake3(0x01 + left + right)`
+  - Odd node rule: promote the final unpaired node unchanged (RFC 6962 style)
+
 - Secret key: 2528 bytes; combined format `sk || pk` = 3840 bytes
 - Signatures are deterministic: same key + same message = same signature
 
@@ -254,5 +263,7 @@ A verifier that does not support a given suite must report an error rather than 
 ### 11.5 Backward compatibility
 
 - Shards signed with Ed25519 remain valid indefinitely
-- New shards default to `axm-blake3-mldsa44` for post-quantum security
-- The Merkle tree, content hashing, identifiers, and all non-signature operations are identical across suites
+- New shards may use `axm-blake3-mldsa44` for post-quantum signatures
+- Merkle construction is suite-specific (Section 4 for legacy Ed25519; Section 11.3 for the post-quantum suite)
+- Source file content hashes (`sources[].hash`) remain SHA-256 across suites
+- Shard layout, required tables, and identifiers remain unchanged across suites

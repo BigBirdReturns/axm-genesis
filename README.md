@@ -11,6 +11,8 @@ A shard is a directory containing structured claims extracted from source docume
 ```
 shard/
 ├── manifest.json          # Metadata, Merkle root, cryptographic suite
+
+Note: Merkle construction is suite-specific. Legacy Ed25519 uses the v1.0 Merkle rules. The post-quantum suite uses domain separation and RFC 6962 odd-node promotion.
 ├── sig/
 │   ├── manifest.sig       # Ed25519 or ML-DSA-44 signature
 │   └── publisher.pub      # Public key
