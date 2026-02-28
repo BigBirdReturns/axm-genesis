@@ -18,7 +18,7 @@ from axm_build.cli import CANONICAL_TEST_PRIVATE_KEY
 
 
 VECTORS = Path(__file__).parent / "vectors"
-TRUSTED_KEY = (Path(__file__).parent.parent / "keys" / "canonical_test_public_key").resolve()
+TRUSTED_KEY = (Path(__file__).parent.parent / "keys" / "canonical_test_publisher.pub").resolve()
 
 
 def _copy_vector(tmp_path: Path, name: str) -> Path:

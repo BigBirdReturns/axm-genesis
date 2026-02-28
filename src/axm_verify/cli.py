@@ -6,9 +6,11 @@ import click
 
 from .logic import verify_shard
 
+
 @click.group()
 def main() -> None:
     pass
+
 
 @main.command("shard")
 @click.argument("path", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path))
@@ -16,7 +18,7 @@ def main() -> None:
     "--trusted-key",
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to the trusted publisher public key (32 bytes).",
+    help="Path to the trusted publisher public key.",
 )
 def shard_cmd(path: Path, trusted_key: Path) -> None:
     """Verify an AXM shard at PATH."""
@@ -24,6 +26,7 @@ def shard_cmd(path: Path, trusted_key: Path) -> None:
     click.echo(json.dumps(result, ensure_ascii=False))
     if result.get("status") != "PASS":
         raise SystemExit(1)
+
 
 if __name__ == "__main__":
     main()

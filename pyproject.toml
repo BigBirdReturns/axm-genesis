@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axm-genesis"
-version = "1.0.2"
+version = "1.2.0"
 description = "Protocol for immutable, content-addressed knowledge graphs"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -18,9 +18,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pq = [
+  "dilithium-py>=0.5.0",
+]
 dev = [
   "pytest>=7.0",
   "ruff>=0.1.0",
+  "dilithium-py>=0.5.0",
 ]
 
 [project.scripts]

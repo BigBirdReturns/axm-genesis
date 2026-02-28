@@ -1,9 +1,8 @@
 """Normative Arrow schemas for AXM shards.
 
-The builder re-exports schemas from axm_verify.const so the reference
-implementation shares one source of truth.
+Re-exports from axm_verify.const so the reference implementation
+shares one source of truth.
 """
-
 from __future__ import annotations
 
 from axm_verify.const import (

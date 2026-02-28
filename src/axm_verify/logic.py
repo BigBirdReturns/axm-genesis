@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import struct as _struct
 from pathlib import Path
 from typing import Any, Dict, List, Set
 
@@ -213,6 +214,100 @@ def _validate_parquet_schema(path: Path, expected: Any, errors: List[Dict[str, s
 
 
 
+def _validate_hot_stream_continuity(
+    content_dir: Path,
+    errors: List[Dict[str, str]],
+) -> None:
+    """REQ 5 — Non-selective recording.
+
+    Verifies that cam_latents.bin, if present, contains a gap-free sequence
+    of latent records with no dropped frames.
+
+    A missing or gapped frame means either deliberate deletion (spoliation)
+    or unrecovered corruption. Both are compliance violations.
+
+    Shards without cam_latents.bin are unaffected — document shards,
+    knowledge shards, and non-embodied spokes pass through silently.
+
+    Binary format (from axm_core.protocol):
+        File layout:    [AXLF (4 bytes)] [records ...]
+        Record layout:  [AXLR (4)] [ver=1 (1)] [frame_id (4)] [length (4)] [payload]
+        REC_HEADER_FMT: "<4sBII"  → 13 bytes
+    """
+    _FILE_MAGIC   = b"AXLF"        # File-level header written once at open
+    _REC_MAGIC    = b"AXLR"        # Per-record magic
+    _LATENT_HEADER_FMT = "<4sBII"  # magic(4) ver(1) frame_id(4) length(4)
+    _LATENT_HEADER_LEN = _struct.calcsize(_LATENT_HEADER_FMT)
+    _LATENT_VERSION = 1
+    _FILE_HEADER_LEN = 4           # AXLF file magic, must be skipped before records
+
+    latents_path = content_dir / "cam_latents.bin"
+    if not latents_path.exists():
+        return  # Not an embodied shard — skip silently
+
+    if latents_path.stat().st_size > MAX_FILE_BYTES:
+        _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+             "cam_latents.bin exceeds size limit — cannot verify continuity")
+        return
+
+    expected_fid = 0
+    offset = 0
+
+    try:
+        with latents_path.open("rb") as f:
+            # Skip the 4-byte file-level magic (AXLF)
+            file_magic = f.read(_FILE_HEADER_LEN)
+            if file_magic != _FILE_MAGIC:
+                _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+                     f"cam_latents.bin: invalid file magic {file_magic!r} "
+                     f"(expected {_FILE_MAGIC!r})")
+                return
+            offset = _FILE_HEADER_LEN
+
+            while True:
+                header_bytes = f.read(_LATENT_HEADER_LEN)
+                if len(header_bytes) == 0:
+                    break  # Clean EOF
+                if len(header_bytes) < _LATENT_HEADER_LEN:
+                    _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+                         f"cam_latents.bin: truncated header at offset {offset} "
+                         f"(expected frame {expected_fid})")
+                    return
+
+                try:
+                    magic, ver, fid, dlen = _struct.unpack(_LATENT_HEADER_FMT, header_bytes)
+                except _struct.error as exc:
+                    _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+                         f"cam_latents.bin: unpack error at offset {offset}: {exc}")
+                    return
+
+                if magic != _REC_MAGIC or ver != _LATENT_VERSION:
+                    _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+                         f"cam_latents.bin: bad record magic/version at offset {offset} "
+                         f"(magic={magic!r} expected={_REC_MAGIC!r} ver={ver})")
+                    return
+
+                if int(fid) != expected_fid:
+                    _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+                         f"cam_latents.bin: frame gap at offset {offset} — "
+                         f"expected frame {expected_fid}, found frame {fid}")
+                    return
+
+                payload = f.read(dlen)
+                if len(payload) < dlen:
+                    _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+                         f"cam_latents.bin: truncated payload at offset {offset} "
+                         f"(frame {fid}, expected {dlen} bytes, got {len(payload)})")
+                    return
+
+                offset += _LATENT_HEADER_LEN + dlen
+                expected_fid += 1
+
+    except Exception as exc:
+        _err(errors, ErrorCode.E_BUFFER_DISCONTINUITY,
+             f"cam_latents.bin: read error during continuity check: {exc}")
+
+
 def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "strict") -> Dict[str, Any]:
     root = Path(shard_path)
     errors: List[Dict[str, str]] = []
@@ -253,7 +348,7 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
     try:
         shard_pub = shard_pub_path.read_bytes()
     except Exception as e:
-        _err(errors, ErrorCode.E_SIG_INVALID, f"Cannot read shard publisher.pub: {e}")
+        _err(errors, ErrorCode.E_SIG_MISSING, f"Cannot read shard publisher.pub: {e}")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
     if shard_pub != trusted_pub:
@@ -419,6 +514,9 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
 
         except Exception as e:
             _err(errors, ErrorCode.E_REF_READ, f"Span integrity check failed: {e}")
+
+    # 7) Hot stream continuity (REQ 5 — non-selective recording)
+    _validate_hot_stream_continuity(root / "content", errors)
 
     status = "FAIL" if errors else "PASS"
     return {"shard": str(shard_path), "status": status, "error_count": len(errors), "errors": errors}

@@ -34,14 +34,16 @@ An optional `ext/` directory may contain extension parquet files. Extensions are
 - Merkle hash: Blake3.
 - Signature: Ed25519 over the raw bytes of `manifest.json` (default suite). For alternative suites, see Section 11.
 
-## 4. Merkle Root (Ed25519 legacy suite)
+## 4. Merkle Root
 
 The Merkle root commits to all files in the shard except:
 
 - `manifest.json`
 - all files under `sig/`
 
-This section defines the legacy Merkle construction used when the manifest `suite` field is absent or set to "ed25519". The post-quantum suite uses a different Merkle construction defined in Section 11.3.
+Merkle construction is suite-specific. The suite is identified by the `suite` field in `manifest.json` (see Section 11).
+
+### 4.1 Ed25519 legacy suite (suite absent or `"ed25519"`)
 
 Leaf hash for each included file:
 
@@ -54,8 +56,32 @@ Leaves are sorted by UTF-8 byte order of `relpath_utf8`.
 Internal nodes:
 
 - pair adjacent leaves left-to-right
-- if the level has an odd count, duplicate the last leaf
+- if the level has an odd count, duplicate the last leaf (Bitcoin-style)
 - `parent = Blake3(left + right)`
+
+The Merkle root is the final node as lowercase hex.
+
+### 4.2 axm-blake3-mldsa44 post-quantum suite
+
+The post-quantum suite uses domain-separated hashing and RFC 6962 odd-leaf promotion to prevent second-preimage attacks.
+
+Leaf hash for each included file:
+
+`leaf = Blake3( 0x00 + relpath_utf8 + 0x00 + file_bytes )`
+
+The `0x00` domain prefix distinguishes leaf nodes from internal nodes.
+
+Leaves are sorted by UTF-8 byte order of `relpath_utf8`.
+
+Internal nodes:
+
+`parent = Blake3( 0x01 + left + right )`
+
+The `0x01` domain prefix distinguishes internal nodes from leaf nodes.
+
+Odd-leaf promotion (RFC 6962): if a level has an odd count, the last leaf is promoted unchanged to the next level. It is **not** duplicated. This prevents the CVE-2012-2459 duplicate-leaf vulnerability.
+
+Empty tree: `Blake3( 0x01 )` (hardcoded constant, not computed from leaves).
 
 The Merkle root is the final node as lowercase hex.
 
@@ -120,7 +146,7 @@ Let:
 
 - `subject`: the entity_id string for the subject
 - `predicate`: canonicalized predicate
-- `object_type`: `"entity"` or `"literal:string"`
+- `object_type`: `"entity"`, `"literal:string"`, `"literal:integer"`, `"literal:decimal"`, or `"literal:boolean"`
 - `object_value`:
   - if object_type is `"entity"`, the entity_id string for the object
   - otherwise, canonicalized literal value
@@ -148,8 +174,8 @@ All tables are Parquet files with explicit Arrow schemas.
 | subject | string | entity_id |
 | predicate | string | |
 | object | string | entity_id or literal value |
-| object_type | string | `entity` or `literal:string` |
-| tier | int8 | 0 to 2 |
+| object_type | string | `entity`, `literal:string`, `literal:integer`, `literal:decimal`, or `literal:boolean` |
+| tier | int8 | 0 to 4 |
 
 ### 7.3 provenance.parquet
 
@@ -233,7 +259,6 @@ The optional `suite` field in `manifest.json` identifies which cryptographic sui
 - Public key: 32 bytes
 - Signature: 64 bytes
 - Signature input: raw bytes of `manifest.json`
-- Merkle construction: legacy (Section 4)
 
 ### 11.3 axm-blake3-mldsa44 (post-quantum)
 
@@ -242,14 +267,9 @@ The optional `suite` field in `manifest.json` identifies which cryptographic sui
 - Public key: 1312 bytes
 - Signature: 2420 bytes
 - Signature input: raw bytes of `manifest.json`
-- Merkle construction:
-  - Leaf: `Blake3(0x00 + relpath_utf8 + 0x00 + file_bytes)`
-  - Leaves sorted by UTF-8 byte order of `relpath_utf8`
-  - Node: `Blake3(0x01 + left + right)`
-  - Odd node rule: promote the final unpaired node unchanged (RFC 6962 style)
-
 - Secret key: 2528 bytes; combined format `sk || pk` = 3840 bytes
 - Signatures are deterministic: same key + same message = same signature
+- Merkle construction: domain-separated leaves and nodes, RFC 6962 odd-leaf promotion (see Section 4.2)
 
 ### 11.4 Suite detection
 
@@ -263,7 +283,6 @@ A verifier that does not support a given suite must report an error rather than 
 ### 11.5 Backward compatibility
 
 - Shards signed with Ed25519 remain valid indefinitely
-- New shards may use `axm-blake3-mldsa44` for post-quantum signatures
-- Merkle construction is suite-specific (Section 4 for legacy Ed25519; Section 11.3 for the post-quantum suite)
-- Source file content hashes (`sources[].hash`) remain SHA-256 across suites
-- Shard layout, required tables, and identifiers remain unchanged across suites
+- New shards default to `axm-blake3-mldsa44` for post-quantum security
+- Merkle construction is suite-specific: Ed25519 uses duplicate odd-leaf (Section 4.1); axm-blake3-mldsa44 uses RFC 6962 odd-leaf promotion with domain-separated hashing (Section 4.2)
+- Content hashing (SHA-256 for span/provenance byte ranges), identifier computation, and Parquet schemas are identical across suites

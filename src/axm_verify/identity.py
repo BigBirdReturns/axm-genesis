@@ -4,14 +4,12 @@ import base64
 import hashlib
 import unicodedata
 
+
 def canonicalize(text: str) -> str:
     if "\x00" in text:
         raise ValueError("Identifier contains illegal null byte")
-
-    # NFC normalization + casefold + whitespace collapse
     t = unicodedata.normalize("NFC", text)
     t = t.casefold()
-    # Remove control chars and normalize internal whitespace
     parts = []
     for chunk in t.split():
         cleaned = "".join(c for c in chunk if unicodedata.category(c) != "Cc")
@@ -19,10 +17,12 @@ def canonicalize(text: str) -> str:
             parts.append(cleaned)
     return " ".join(parts)
 
+
 def recompute_entity_id(namespace: str, label: str) -> str:
     canonical = canonicalize(namespace) + "\x00" + canonicalize(label)
     digest = hashlib.sha256(canonical.encode("utf-8")).digest()
     return "e_" + base64.b32encode(digest[:15]).decode("ascii").lower().rstrip("=")
+
 
 def recompute_claim_id(subject: str, predicate: str, obj: str, object_type: str) -> str:
     pred_canon = canonicalize(predicate)

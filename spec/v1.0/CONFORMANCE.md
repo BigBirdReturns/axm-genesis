@@ -12,8 +12,8 @@ In addition, a conforming shard must:
 
 - use UTF-8 for `manifest.json`
 - ensure all required Parquet columns contain no null values
-- ensure object_type is one of: `entity`, `literal:string`
-- ensure tier is an integer in the range 0 to 2
+- ensure object_type is one of: `entity`, `literal:string`, `literal:integer`, `literal:decimal`, `literal:boolean`
+- ensure tier is an integer in the range 0 to 4
 
 ## 2. Conforming Verifier
 
