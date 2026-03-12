@@ -125,8 +125,8 @@
   }
 
   h1 {
-    font-family: var(--display); font-size: clamp(52px, 8vw, 96px);
-    letter-spacing: 0.04em; line-height: 0.9;
+    font-family: var(--display); font-size: clamp(40px, 10vw, 96px);
+    letter-spacing: clamp(0.02em, 0.4vw, 0.04em); line-height: 0.9;
     color: var(--text-hi); text-transform: uppercase;
   }
   h1 .accent { color: var(--amber); }
@@ -149,24 +149,35 @@
     position: sticky; top: 0; z-index: 500;
     background: var(--bg);
   }
-  nav::after {
-    content: '';
-    position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
-    background: var(--border);
-  }
-  nav ul { display: flex; list-style: none; gap: 0; overflow-x: auto; }
+  nav ul { display: flex; flex-wrap: wrap; list-style: none; gap: 0; }
   nav a {
-    display: block; padding: 16px 22px;
+    display: block; padding: 13px 18px;
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
     text-transform: uppercase; color: var(--dim); text-decoration: none;
     border-right: 1px solid var(--border);
+    border-bottom: 1px solid transparent;
     transition: color 0.2s, background 0.2s; white-space: nowrap;
   }
   nav a:hover { color: var(--amber); background: rgba(200,168,75,0.04); }
-  nav a.active { color: var(--amber); background: rgba(200,168,75,0.06); }
+  nav a.active {
+    color: var(--amber);
+    background: rgba(200,168,75,0.12);
+    box-shadow: inset 0 -2px 0 var(--amber);
+  }
 
   /* ── SECTIONS ── */
-  section { padding: 80px 0; border-bottom: 1px solid var(--border); }
+  section {
+    padding: 72px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  section#manifesto {
+    padding: 100px 0 80px;
+  }
+
+  section#errors {
+    padding: 60px 0 100px;
+  }
   section:last-of-type { border-bottom: none; }
   .section-header { display: flex; align-items: baseline; gap: 20px; margin-bottom: 48px; }
   .section-number {
@@ -232,8 +243,7 @@
   .shard-tree .comment{ color: #444450; font-size: 11px; }
 
   .shard-fields { display: flex; flex-direction: column; gap: 16px; }
-  .shard-field { border-left: 2px solid var(--border2); padding: 14px 20px; background: var(--bg2); }
-  .shard-field.highlight { border-left-color: var(--amber); }
+  .shard-field { border-left: 2px solid var(--amber-dim); padding: 14px 20px; background: var(--bg2); }
   .shard-field h3 { margin-bottom: 6px; }
   .shard-field p { font-size: 14px; line-height: 1.6; color: var(--dim); max-width: none; }
 
@@ -513,7 +523,7 @@
         </div>
       </div>
       <div class="shard-fields">
-        <div class="shard-field highlight">
+        <div class="shard-field">
           <h3>Manifest Fields (Frozen)</h3>
           <p>spec_version, shard_id, metadata, publisher, sources (with SHA-256 content hashes), integrity.merkle_root, statistics, and optional suite. Field names and types are frozen. New optional fields may be added in minor versions.</p>
         </div>
@@ -949,7 +959,7 @@
     const txt = el('text',{style:'cursor:pointer;'}, g);
     txt.addEventListener('click',()=>setLayer(l.id));
     const tp = el('textPath',{href:`#${pathId}`, startOffset:'50%', 'text-anchor':'middle',
-      style:`font-size:${l.id==='l1'?'9':'9.5'}px;font-weight:500;letter-spacing:0.15em;fill:#444450;text-transform:uppercase;transition:fill 0.3s;font-family:'DM Mono',monospace;`}, txt);
+      style:`font-size:${l.id==='l1'?'11':'11.5'}px;font-weight:500;letter-spacing:0.15em;fill:#444450;text-transform:uppercase;transition:fill 0.3s;font-family:'DM Mono',monospace;`}, txt);
     tp.textContent = l.label;
     arcEls[l.id] = tp;
   });
