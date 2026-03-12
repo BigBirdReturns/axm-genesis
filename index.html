@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXM Genesis — Cryptographic Kernel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0e0e0f;
+    --bg2:       #141416;
+    --bg3:       #1a1a1d;
+    --border:    #2a2a2e;
+    --border2:   #3a3a3f;
+    --amber:     #c8a84b;
+    --amber-dim: #7a6530;
+    --amber-glow:#e8c870;
+    --platinum:  #b8b8c0;
+    --dim:       #666672;
+    --text:      #d4d4dc;
+    --text-hi:   #eeeef4;
+    --red-dim:   #7a3535;
+    --green-dim: #2a5c3a;
+    --blue-dim:  #2a3a5c;
+    --mono:   'DM Mono', monospace;
+    --serif:  'Crimson Pro', Georgia, serif;
+    --display:'Bebas Neue', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.65;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── GRAIN ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    pointer-events: none; z-index: 1000; opacity: 0.6;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse-amber {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(200,168,75,0); }
+    50%       { box-shadow: 0 0 20px 4px rgba(200,168,75,0.12); }
+  }
+  /* CRT scanlines — repeating bands, not a single bar */
+  @keyframes crt-scroll {
+    0%   { background-position: 0 0; }
+    100% { background-position: 0 -120px; }
+  }
+  @keyframes lo-fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-up  { animation: fadeUp 0.7s ease both; }
+  .delay-1     { animation-delay: 0.1s; }
+  .delay-2     { animation-delay: 0.2s; }
+  .delay-3     { animation-delay: 0.35s; }
+
+  /* ── LAYOUT ── */
+  .page-wrap { max-width: 1140px; margin: 0 auto; padding: 0 40px; }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+
+  /* CRT scanline overlay on header only */
+  .header-scanline {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 3px,
+      rgba(200,168,75,0.03) 3px,
+      rgba(200,168,75,0.03) 4px
+    );
+    animation: crt-scroll 3s linear infinite;
+    pointer-events: none; z-index: 1;
+    opacity: 0.7;
+  }
+  /* Amber sweep line on top edge */
+  .header-scanline::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, var(--amber) 40%, var(--amber-glow) 50%, var(--amber) 60%, transparent 100%);
+    opacity: 0.4;
+  }
+
+  .header-inner {
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: end; gap: 40px; padding: 60px 0 40px;
+    position: relative; z-index: 2;
+  }
+
+  .header-badge {
+    font-family: var(--mono); font-size: 10px; font-weight: 400;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--amber);
+    margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .header-badge::before {
+    content: ''; display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--amber);
+    animation: pulse-amber 2.5s ease-in-out infinite;
+  }
+
+  h1 {
+    font-family: var(--display); font-size: clamp(52px, 8vw, 96px);
+    letter-spacing: 0.04em; line-height: 0.9;
+    color: var(--text-hi); text-transform: uppercase;
+  }
+  h1 .accent { color: var(--amber); }
+
+  .header-tagline {
+    font-family: var(--serif); font-style: italic; font-size: 19px;
+    color: var(--platinum); margin-top: 20px; max-width: 520px; line-height: 1.5;
+  }
+
+  .header-meta { text-align: right; }
+  .version-block {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--dim); line-height: 2; letter-spacing: 0.06em;
+  }
+  .version-block .val { color: var(--amber); }
+
+  /* ── NAV ── */
+  nav {
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 500;
+    background: var(--bg);
+  }
+  nav::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+    background: var(--border);
+  }
+  nav ul { display: flex; list-style: none; gap: 0; overflow-x: auto; }
+  nav a {
+    display: block; padding: 16px 22px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--dim); text-decoration: none;
+    border-right: 1px solid var(--border);
+    transition: color 0.2s, background 0.2s; white-space: nowrap;
+  }
+  nav a:hover { color: var(--amber); background: rgba(200,168,75,0.04); }
+  nav a.active { color: var(--amber); background: rgba(200,168,75,0.06); }
+
+  /* ── SECTIONS ── */
+  section { padding: 80px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+  .section-header { display: flex; align-items: baseline; gap: 20px; margin-bottom: 48px; }
+  .section-number {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--amber-dim); letter-spacing: 0.1em; flex-shrink: 0;
+  }
+  h2 {
+    font-family: var(--display); font-size: clamp(28px, 4vw, 44px);
+    letter-spacing: 0.06em; color: var(--text-hi);
+    text-transform: uppercase; line-height: 1;
+  }
+  h3 {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--amber); margin-bottom: 12px; font-weight: 400;
+  }
+  p { color: var(--platinum); max-width: 680px; }
+
+  /* ── MANIFESTO ── */
+  .manifesto {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--border); border: 1px solid var(--border); margin-top: 40px;
+  }
+  .manifesto-item { background: var(--bg2); padding: 36px 32px; position: relative; }
+  .manifesto-item::before {
+    content: attr(data-num); position: absolute; top: 20px; right: 24px;
+    font-family: var(--display); font-size: 56px; color: var(--border2);
+    line-height: 1; pointer-events: none;
+  }
+  .manifesto-item p { font-size: 16px; line-height: 1.7; color: var(--text); max-width: none; position: relative; z-index: 1; }
+  .manifesto-item strong { color: var(--amber); font-weight: 600; }
+  .manifesto-item code { font-family: var(--mono); font-size: 13px; color: var(--amber); }
+
+  /* ── PRIMITIVES ── */
+  .primitives-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+    background: var(--border); border: 1px solid var(--border); margin-top: 16px;
+  }
+  .primitive-card {
+    background: var(--bg2); padding: 28px 28px 32px;
+    position: relative; overflow: hidden; transition: background 0.2s;
+  }
+  .primitive-card:hover { background: var(--bg3); }
+  .primitive-card::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+    background: var(--amber); transform: scaleX(0); transform-origin: left;
+    transition: transform 0.3s ease;
+  }
+  .primitive-card:hover::after { transform: scaleX(1); }
+  .prim-icon { font-family: var(--mono); font-size: 22px; color: var(--amber); margin-bottom: 14px; display: block; }
+  .primitive-card h3 { font-size: 10px; margin-bottom: 10px; }
+  .primitive-card p { font-size: 14px; line-height: 1.6; color: var(--dim); max-width: none; }
+  .primitive-card code { font-family: var(--mono); font-size: 11px; color: var(--amber); background: rgba(200,168,75,0.08); padding: 1px 5px; border-radius: 2px; }
+
+  /* ── SHARD FORMAT ── */
+  .shard-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; margin-top: 16px; }
+  .shard-tree {
+    font-family: var(--mono); font-size: 13px; line-height: 2;
+    color: var(--dim); background: var(--bg2); border: 1px solid var(--border); padding: 28px 32px;
+  }
+  .shard-tree .dir    { color: var(--amber); }
+  .shard-tree .file   { color: var(--platinum); }
+  .shard-tree .ext    { color: var(--amber-dim); }
+  .shard-tree .comment{ color: #444450; font-size: 11px; }
+
+  .shard-fields { display: flex; flex-direction: column; gap: 16px; }
+  .shard-field { border-left: 2px solid var(--border2); padding: 14px 20px; background: var(--bg2); }
+  .shard-field.highlight { border-left-color: var(--amber); }
+  .shard-field h3 { margin-bottom: 6px; }
+  .shard-field p { font-size: 14px; line-height: 1.6; color: var(--dim); max-width: none; }
+
+  .gold-callout {
+    margin-top: 24px; border: 1px solid var(--amber-dim);
+    background: rgba(200,168,75,0.04);
+    display: grid; grid-template-columns: auto 1fr;
+  }
+  .gold-accent { width: 4px; background: var(--amber); }
+  .gold-body { padding: 28px 32px; }
+  .gold-body h3 { font-family: var(--display); font-size: 22px; color: var(--amber-glow); letter-spacing: 0.08em; margin-bottom: 10px; font-weight: 400; }
+  .gold-body p { font-size: 15px; color: var(--platinum); line-height: 1.7; max-width: 600px; }
+  .gold-body code { font-family: var(--mono); font-size: 12px; color: var(--amber); background: rgba(200,168,75,0.1); padding: 2px 6px; }
+
+  /* ── CRYPTO SUITE TABLE ── */
+  .suite-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; margin-top: 24px; border: 1px solid var(--border); }
+  .suite-table th { background: var(--bg3); color: var(--amber); padding: 14px 20px; text-align: left; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 400; border-bottom: 1px solid var(--border); }
+  .suite-table td { padding: 16px 20px; border-bottom: 1px solid var(--border); color: var(--platinum); vertical-align: middle; }
+  .suite-table tr:last-child td { border-bottom: none; }
+  .suite-table tr:hover td { background: rgba(200,168,75,0.03); }
+
+  .badge { display: inline-block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; padding: 3px 8px; border-radius: 2px; text-transform: uppercase; }
+  .badge-stable { background: rgba(42,92,58,0.4); color: #6ebb8a; border: 1px solid #2a5c3a; }
+  .badge-pq     { background: rgba(42,58,92,0.4); color: #6a8abb; border: 1px solid var(--blue-dim); }
+
+  .domain-sep {
+    margin-top: 32px; padding: 24px 28px; background: var(--bg2);
+    border: 1px solid var(--border); border-left: 3px solid var(--amber);
+  }
+  .domain-sep h3 { margin-bottom: 10px; }
+  .domain-sep-body { font-family: var(--mono); font-size: 13px; line-height: 2.2; color: var(--dim); }
+  .domain-sep-body .lbl  { color: var(--amber); }
+  .domain-sep-body .byte { color: #6a8abb; }
+  .domain-sep-body .out  { color: #6ebb8a; }
+  .domain-sep-body .note { color: #444450; font-size: 11px; }
+
+  /* ── LAYER ONION ── */
+  #genesis-layers-onion { margin-top: 16px; }
+  .onion-wrap { display: grid; grid-template-columns: 420px 1fr; gap: 48px; align-items: start; }
+  .onion-left {}
+  .onion-svg { display: block; }
+  .onion-tabs { display: flex; gap: 1px; margin-top: 16px; background: var(--border2); border: 1px solid var(--border2); }
+  .onion-tab {
+    flex: 1; padding: 10px 8px; background: var(--bg2); border: none;
+    border-top: 2px solid transparent; color: #444450; font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
+    transition: all 0.2s; font-family: var(--mono);
+  }
+  .onion-tab:hover { color: var(--dim); background: var(--bg3); }
+  .onion-tab.active { background: var(--bg3); }
+
+  .onion-detail {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-left: 3px solid var(--amber); padding: 28px; min-height: 340px;
+    animation: lo-fadeIn 0.2s ease both;
+  }
+  .od-eyebrow { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 8px; }
+  .od-name { font-family: var(--display); font-size: 28px; letter-spacing: 0.06em; color: var(--text-hi); margin-bottom: 16px; line-height: 1; }
+  .od-desc { font-family: var(--serif); font-size: 16px; line-height: 1.7; color: var(--platinum); margin-bottom: 20px; max-width: none; }
+  .od-examples-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; color: #444450; text-transform: uppercase; margin-bottom: 10px; }
+  .od-example { font-family: var(--mono); font-size: 11px; color: var(--dim); line-height: 2.1; padding-left: 12px; border-left: 1px solid var(--border); margin-bottom: 2px; }
+  .od-genesis-box { background: rgba(200,168,75,0.05); border: 1px solid rgba(200,168,75,0.15); padding: 14px 16px; margin-top: 16px; }
+  .od-genesis-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; color: var(--amber); text-transform: uppercase; margin-bottom: 6px; }
+  .od-genesis-text  { font-family: var(--mono); font-size: 13px; color: #8a8a90; line-height: 1.6; }
+
+  /* ── VERIFICATION PIPELINE ── */
+  .verify-steps { margin-top: 24px; border: 1px solid var(--border); }
+  .verify-step { display: grid; grid-template-columns: 56px 1fr; border-bottom: 1px solid var(--border); transition: background 0.2s; }
+  .verify-step:last-child { border-bottom: none; }
+  .verify-step:hover { background: rgba(200,168,75,0.025); }
+  .step-num { display: flex; align-items: center; justify-content: center; background: var(--bg3); border-right: 1px solid var(--border); font-family: var(--display); font-size: 20px; color: var(--amber-dim); flex-shrink: 0; }
+  .step-body { padding: 20px 24px; }
+  .step-body h3 { font-size: 10px; margin-bottom: 6px; }
+  .step-body p { font-size: 14px; line-height: 1.6; color: var(--dim); max-width: none; }
+  .step-body code { font-family: var(--mono); font-size: 12px; color: var(--amber); }
+
+  /* ── CONFORMANCE / ERROR TABLES ── */
+  .req-table, .error-table {
+    width: 100%; border-collapse: collapse; margin-top: 24px;
+    border: 1px solid var(--border); font-size: 14px;
+  }
+  .req-table th, .error-table th {
+    background: var(--bg3); color: var(--amber); padding: 12px 20px; text-align: left;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    font-weight: 400; border-bottom: 1px solid var(--border);
+  }
+  .req-table td, .error-table td { padding: 14px 20px; border-bottom: 1px solid var(--border); color: var(--platinum); vertical-align: top; line-height: 1.6; }
+  .req-table tr:last-child td, .error-table tr:last-child td { border-bottom: none; }
+  .req-table tr:hover td, .error-table tr:hover td { background: rgba(200,168,75,0.025); }
+  .req-id    { font-family: var(--mono); font-size: 12px; color: var(--amber); white-space: nowrap; font-weight: 500; }
+  .req-codes { font-family: var(--mono); font-size: 11px; color: var(--dim); line-height: 1.8; }
+  .error-code { font-family: var(--mono); font-size: 12px; color: var(--amber); white-space: nowrap; }
+  .error-desc { color: var(--dim); font-size: 14px; }
+  .error-group th { background: var(--bg); color: var(--border2); font-size: 9px; padding: 8px 20px; letter-spacing: 0.18em; }
+
+  /* ── QUICK START ── */
+  .quickstart-block { background: var(--bg2); border: 1px solid var(--border); margin-top: 24px; overflow: hidden; }
+  .qs-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .qs-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--dim); text-transform: uppercase; }
+  .qs-badge { font-family: var(--mono); font-size: 10px; color: var(--amber-dim); letter-spacing: 0.06em; }
+  .qs-body { padding: 20px 24px; font-family: var(--mono); font-size: 13px; line-height: 2.1; color: var(--dim); overflow-x: auto; }
+  .qs-body .prompt { color: var(--amber-dim); user-select: none; }
+  .qs-body .cmd    { color: var(--platinum); }
+  .qs-body .arg    { color: var(--amber); }
+  .qs-body .comment{ color: #444450; }
+  .qs-body .output { color: #4a7a5a; }
+
+  /* ── FOOTER ── */
+  footer { border-top: 1px solid var(--border); padding: 40px 0; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .footer-left { font-family: var(--mono); font-size: 11px; color: var(--dim); line-height: 2; letter-spacing: 0.06em; }
+  .footer-left strong { color: var(--amber); font-weight: 500; }
+  .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+  .footer-links a { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; color: var(--dim); text-decoration: none; text-transform: uppercase; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--amber); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .page-wrap { padding: 0 24px; }
+    .header-inner { grid-template-columns: 1fr; }
+    .header-meta { text-align: left; margin-top: 20px; }
+    .manifesto { grid-template-columns: 1fr; }
+    .primitives-grid { grid-template-columns: repeat(2, 1fr); }
+    .shard-layout { grid-template-columns: 1fr; }
+    .onion-wrap { grid-template-columns: 1fr; }
+    .onion-svg { max-width: 340px; }
+  }
+  @media (max-width: 580px) {
+    .primitives-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-scanline"></div>
+  <div class="page-wrap">
+    <div class="header-inner">
+      <div class="animate-up">
+        <div class="header-badge">AXM Ecosystem · Kernel Layer</div>
+        <h1>AXM <span class="accent">Genesis</span></h1>
+        <p class="header-tagline">The immutable cryptographic foundation. Every shard sealed. Every claim provable. Nothing changes here without a frozen-spec RFC.</p>
+      </div>
+      <div class="header-meta animate-up delay-2">
+        <div class="version-block">
+          <div>VERSION <span class="val">1.2.0</span></div>
+          <div>SPEC <span class="val">v1.0.0 FROZEN</span></div>
+          <div>SUITE <span class="val">axm-blake3-mldsa44</span></div>
+          <div>GOLD SHARD <span class="val">fm21-11-hemorrhage-v1</span></div>
+          <div>LICENSE <span class="val">Apache-2.0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav id="main-nav">
+  <div class="page-wrap">
+    <ul>
+      <li><a href="#manifesto"    data-section="manifesto">Manifesto</a></li>
+      <li><a href="#primitives"   data-section="primitives">Primitives</a></li>
+      <li><a href="#shard"        data-section="shard">Shard Format</a></li>
+      <li><a href="#crypto"       data-section="crypto">Cryptography</a></li>
+      <li><a href="#layers"       data-section="layers">Three Layers</a></li>
+      <li><a href="#verification" data-section="verification">Verification</a></li>
+      <li><a href="#conformance"  data-section="conformance">Conformance</a></li>
+      <li><a href="#errors"       data-section="errors">Error Codes</a></li>
+      <li><a href="#quickstart"   data-section="quickstart">Quick Start</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- §01 MANIFESTO -->
+<section id="manifesto">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 01</span>
+      <h2>What Genesis Is</h2>
+    </div>
+    <p class="animate-up delay-1">Genesis is the only package in the AXM ecosystem with write access to the signed shard format. Everything else reads. This boundary is the invariant that makes long-term verification possible.</p>
+    <div class="manifesto animate-up delay-2">
+      <div class="manifesto-item" data-num="I">
+        <p><strong>Tamper-evident by construction.</strong> Every byte in a shard is covered by a BLAKE3 Merkle tree. The root is signed post-quantum. Tamper any byte — content, graph, evidence, or extension — and verification fails. There is no escape hatch.</p>
+      </div>
+      <div class="manifesto-item" data-num="II">
+        <p><strong>The spec is frozen.</strong> <code>spec/v1.0/SPECIFICATION.md</code> is normative and sealed. Changes require an RFC in <code>rfcs/</code>, a new spec version, and a migration path. Minor versions add; they never remove.</p>
+      </div>
+      <div class="manifesto-item" data-num="III">
+        <p><strong>The gold shard is the definition of correctness.</strong> <code>fm21-11-hemorrhage-v1</code> is never recompiled. A verifier change that breaks the gold shard is rejected — the gold shard wins. CI enforces this on every commit.</p>
+      </div>
+      <div class="manifesto-item" data-num="IV">
+        <p><strong>Post-quantum by default.</strong> New shards use ML-DSA-44 (FIPS 204). Ed25519 shards remain valid indefinitely — backward compatibility is a hard requirement. Cryptographic agility is handled through suite identifiers, not protocol breaks.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- §02 PRIMITIVES -->
+<section id="primitives">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 02</span>
+      <h2>Frozen Primitives</h2>
+    </div>
+    <p class="animate-up delay-1">Six cryptographic and structural primitives are frozen across all <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">axm-genesis &gt;= 1.x</code> releases. A spoke built against any of these will continue to work without modification.</p>
+    <div class="primitives-grid animate-up delay-2">
+      <div class="primitive-card">
+        <span class="prim-icon">⬡</span>
+        <h3>BLAKE3 Merkle Trees</h3>
+        <p>Two constructions: legacy duplicate-odd-leaf (Ed25519) and domain-separated RFC 6962 odd-leaf promotion (ML-DSA-44). Leaf: <code>BLAKE3(0x00 ‖ path ‖ 0x00 ‖ bytes)</code>. Node: <code>BLAKE3(0x01 ‖ left ‖ right)</code>. Sorted by UTF-8 path.</p>
+      </div>
+      <div class="primitive-card">
+        <span class="prim-icon">◈</span>
+        <h3>ML-DSA-44 Signatures</h3>
+        <p>FIPS 204 post-quantum signature (Dilithium2). Deterministic: same key and message always produce the same signature. pk=1312 B, sig=2420 B. Identified by suite field <code>axm-blake3-mldsa44</code> in manifest.</p>
+      </div>
+      <div class="primitive-card">
+        <span class="prim-icon">▦</span>
+        <h3>Parquet + DuckDB</h3>
+        <p>All graph, evidence, and extension tables are Apache Parquet with explicit Arrow schemas. Deterministically written — sorted, compressed with zstd. DuckDB queries extensions at query time with no central registry.</p>
+      </div>
+      <div class="primitive-card">
+        <span class="prim-icon">⟳</span>
+        <h3>Lineage + References</h3>
+        <p>Supersession chains via <code>ext/lineage&#64;1.parquet</code>. Cross-shard claim links via <code>ext/references&#64;1.parquet</code>. Both are Merkle-covered extension tables — optional, additive, and verifiable.</p>
+      </div>
+      <div class="primitive-card">
+        <span class="prim-icon">⊞</span>
+        <h3>Episodic Index</h3>
+        <p>Universal base pass produced by axm-chat distill: topic tags, named people, tools, project references, question text, resolution state, tone — written to <code>ext/episodes&#64;1.parquet</code>. DuckDB-queryable without an LLM.</p>
+      </div>
+      <div class="primitive-card">
+        <span class="prim-icon">⚙</span>
+        <h3>Engineering Lens</h3>
+        <p>Gated second pass for technical conversations. Extracts problem statement, graveyard of failed attempts, working solution, and architectural rules — written to <code>ext/engineering&#64;1.parquet</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- §03 SHARD FORMAT -->
+<section id="shard">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 03</span>
+      <h2>Shard Format</h2>
+    </div>
+    <div class="shard-layout animate-up delay-1">
+      <div>
+        <div class="shard-tree">
+          <div><span class="dir">shard_blake3_&lt;merkle_root&gt;/</span></div>
+          <div>&nbsp;&nbsp;<span class="file">manifest.json</span> <span class="comment">← merkle root + suite</span></div>
+          <div>&nbsp;&nbsp;<span class="dir">sig/</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">manifest.sig</span> <span class="comment">← ML-DSA-44 or Ed25519</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">publisher.pub</span></div>
+          <div>&nbsp;&nbsp;<span class="dir">content/</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">source.txt</span> <span class="comment">← byte-addressable</span></div>
+          <div>&nbsp;&nbsp;<span class="dir">graph/</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">entities.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">claims.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">provenance.parquet</span></div>
+          <div>&nbsp;&nbsp;<span class="dir">evidence/</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">spans.parquet</span></div>
+          <div>&nbsp;&nbsp;<span class="dir">ext/</span> <span class="comment">← optional, Merkle-covered</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">episodes&#64;1.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">engineering&#64;1.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">lineage&#64;1.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">references&#64;1.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">temporal&#64;1.parquet</span></div>
+        </div>
+        <div class="gold-callout">
+          <div class="gold-accent"></div>
+          <div class="gold-body">
+            <h3>Gold Shard</h3>
+            <p>The reference shard <code>fm21-11-hemorrhage-v1</code>, extracted from FM 21-11 (US Army first aid field manual), is the definition of correctness. Any verifier that accepts it and rejects all invalid test vectors in <code>tests/vectors/shards/invalid/</code> is conformant.</p>
+          </div>
+        </div>
+      </div>
+      <div class="shard-fields">
+        <div class="shard-field highlight">
+          <h3>Manifest Fields (Frozen)</h3>
+          <p>spec_version, shard_id, metadata, publisher, sources (with SHA-256 content hashes), integrity.merkle_root, statistics, and optional suite. Field names and types are frozen. New optional fields may be added in minor versions.</p>
+        </div>
+        <div class="shard-field">
+          <h3>Claims Schema (Frozen)</h3>
+          <p>claim_id · subject · predicate · object · object_type · tier · confidence · speaker · source_span_id. All values are stable, content-addressed identifiers derived from canonical UTF-8 NFC-normalized inputs.</p>
+        </div>
+        <div class="shard-field">
+          <h3>Evidence Byte Offsets</h3>
+          <p>Every claim traces to exact bytes in content. spans.parquet records byte_start, byte_end, and text. Verification confirms <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">content_bytes[start:end].decode("utf-8") == text</code> for each span.</p>
+        </div>
+        <div class="shard-field">
+          <h3>Extension Naming</h3>
+          <p>Extensions follow the convention <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">ext/&lt;name&gt;&#64;&lt;version&gt;.parquet</code>. The &#64;&lt;version&gt; suffix is part of the name. Old verifiers treat ext/ as opaque — extensions never affect core verification.</p>
+        </div>
+        <div class="shard-field">
+          <h3>REQ 5 — Non-Selective Recording</h3>
+          <p>Embodied spokes maintaining <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">content/cam_latents.bin</code> must preserve a gap-free AXLF/AXLR binary frame sequence. Any gap triggers <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">E_BUFFER_DISCONTINUITY</code>. Document shards pass silently.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- §04 CRYPTOGRAPHY -->
+<section id="crypto">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 04</span>
+      <h2>Cryptographic Suites</h2>
+    </div>
+    <p class="animate-up delay-1">Suite-aware since v1.1.0 (RFC 0001). The suite field in manifest.json selects the signing algorithm and Merkle construction. Absent means Ed25519 legacy.</p>
+    <table class="suite-table animate-up delay-2">
+      <thead>
+        <tr>
+          <th>Suite Identifier</th>
+          <th>Algorithm</th>
+          <th>Key</th>
+          <th>Signature</th>
+          <th>Merkle</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-family:var(--mono);font-size:12px;color:var(--platinum)"><em>(absent)</em> or <code style="color:var(--amber)">ed25519</code></td>
+          <td>Ed25519</td>
+          <td>32 B</td>
+          <td>64 B</td>
+          <td>Duplicate odd-leaf</td>
+          <td><span class="badge badge-stable">Stable</span></td>
+        </tr>
+        <tr>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--amber)">axm-blake3-mldsa44</td>
+          <td>ML-DSA-44 (FIPS 204)</td>
+          <td>1312 B</td>
+          <td>2420 B</td>
+          <td>RFC 6962 odd-leaf promotion</td>
+          <td><span class="badge badge-pq">Post-Quantum</span> <span class="badge badge-stable">Default</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="domain-sep animate-up delay-3">
+      <h3>Domain Separation (axm-blake3-mldsa44)</h3>
+      <div class="domain-sep-body">
+        <div><span class="lbl">Leaf</span> &nbsp;= BLAKE3( <span class="byte">0x00</span> ‖ relpath ‖ <span class="byte">0x00</span> ‖ file_bytes )</div>
+        <div><span class="lbl">Node</span> &nbsp;= BLAKE3( <span class="out">0x01</span> ‖ left ‖ right )</div>
+        <div><span class="lbl">Odd</span> &nbsp;&nbsp;= promote unchanged — no duplication (RFC 6962, CVE-2012-2459 safe)</div>
+        <div><span class="lbl">Empty</span> = BLAKE3( <span class="out">0x01</span> ) = <span class="note">48fc721f...</span> <span class="note">← frozen constant</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- §05 THREE LAYERS -->
+<section id="layers">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 05</span>
+      <h2>Three-Layer Architecture</h2>
+    </div>
+    <p class="animate-up delay-1">All three layers use the same Genesis container format. The distinction is semantic — enforced by convention, not by protocol. Genesis seals layers 1 and 2. It never touches layer 3.</p>
+    <div id="genesis-layers-onion" class="animate-up delay-2"></div>
+  </div>
+</section>
+
+<!-- §06 VERIFICATION -->
+<section id="verification">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 06</span>
+      <h2>Verification Pipeline</h2>
+    </div>
+    <p class="animate-up delay-1">The reference verifier <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">axm-verify</code> runs seven checks in sequence. A failure at any step halts the pipeline. Exit 0 = PASS, Exit 1 = FAIL, Exit 2 = malformed layout.</p>
+    <div class="verify-steps animate-up delay-2">
+      <div class="verify-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h3>Layout Validation</h3>
+          <p>Required root items: manifest.json, sig/, content/, graph/, evidence/. Optional: ext/. Unexpected items trigger <code>E_LAYOUT_DIRTY</code>. Symlinks, dotfiles rejected unconditionally.</p>
+        </div>
+      </div>
+      <div class="verify-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h3>Manifest Parse + Schema</h3>
+          <p>manifest.json is read once — the same bytes are used for both Merkle verification and signature verification to prevent TOCTOU swaps. Bounded by 256 KiB limit.</p>
+        </div>
+      </div>
+      <div class="verify-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h3>Trusted Key Anchor + Signature</h3>
+          <p>Requires <code>--trusted-key</code>. The shard's publisher.pub must match the trusted key exactly. Then the manifest signature is verified against that key using the suite-appropriate algorithm.</p>
+        </div>
+      </div>
+      <div class="verify-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <h3>Merkle Root Computation</h3>
+          <p>All shard files except manifest.json and sig/ are hashed using the suite-specific Merkle construction. Computed root must match <code>manifest.integrity.merkle_root</code> exactly.</p>
+        </div>
+      </div>
+      <div class="verify-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <h3>Parquet Schema Validation</h3>
+          <p>Column names, types, and counts for entities, claims, provenance, and spans are checked against frozen Arrow schemas. Row counts bounded by policy limit. Null values in required columns fail.</p>
+        </div>
+      </div>
+      <div class="verify-step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <h3>Reference + Byte-Range Integrity</h3>
+          <p>Every claim subject and entity-type object must exist in entities. Every provenance and span must reference a content file whose SHA-256 is in sources. Byte ranges are validated and span text is confirmed against file bytes.</p>
+        </div>
+      </div>
+      <div class="verify-step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <h3>Hot Stream Continuity (REQ 5)</h3>
+          <p>If <code>content/cam_latents.bin</code> is present: file magic AXLF verified, then AXLR records scanned for gap-free monotone frame_id sequence. Any gap emits <code>E_BUFFER_DISCONTINUITY</code>. Absent = silent pass.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- §07 CONFORMANCE -->
+<section id="conformance">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 07</span>
+      <h2>AXM Compatibility Requirements</h2>
+    </div>
+    <p class="animate-up delay-1">Spokes that produce shards must satisfy all five requirements. Run the conformance suite with <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">pytest tests/test_conformance.py -v</code> — all 13 tests must pass.</p>
+    <table class="req-table animate-up delay-2">
+      <thead>
+        <tr><th>REQ</th><th>Description</th><th>Error Codes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="req-id">REQ 1</td>
+          <td>Manifest integrity — byte-exact signature over the manifest</td>
+          <td class="req-codes">E_SIG_INVALID<br>E_MERKLE_MISMATCH</td>
+        </tr>
+        <tr>
+          <td class="req-id">REQ 2</td>
+          <td>Content identity — all content files covered by Merkle tree</td>
+          <td class="req-codes">E_MERKLE_MISMATCH<br>E_REF_SOURCE</td>
+        </tr>
+        <tr>
+          <td class="req-id">REQ 3</td>
+          <td>Lineage events — all references valid, no nulls in required columns</td>
+          <td class="req-codes">E_REF_ORPHAN<br>E_SCHEMA_NULL</td>
+        </tr>
+        <tr>
+          <td class="req-id">REQ 4</td>
+          <td>Proof bundle — valid signature from a trusted publisher key</td>
+          <td class="req-codes">E_SIG_INVALID<br>E_SIG_MISSING</td>
+        </tr>
+        <tr>
+          <td class="req-id">REQ 5</td>
+          <td>Non-selective recording — no gaps in binary hot stream (embodied spokes)</td>
+          <td class="req-codes">E_BUFFER_DISCONTINUITY</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- §08 ERROR CODES -->
+<section id="errors">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 08</span>
+      <h2>Error Codes</h2>
+    </div>
+    <p class="animate-up delay-1">All error codes are prefixed <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">E_</code> and defined in <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">axm_verify/const.py</code>. Existing codes are never renamed or removed — only new codes are added in minor versions.</p>
+    <table class="error-table animate-up delay-2">
+      <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr class="error-group"><th colspan="2">Layout</th></tr>
+        <tr><td class="error-code">E_LAYOUT_MISSING</td><td class="error-desc">Required directory or file absent from shard root</td></tr>
+        <tr><td class="error-code">E_LAYOUT_DIRTY</td><td class="error-desc">Unexpected file or directory found at shard root or in required subdirectory</td></tr>
+        <tr><td class="error-code">E_DOTFILE</td><td class="error-desc">Dotfile found anywhere in the shard tree</td></tr>
+        <tr class="error-group"><th colspan="2">Manifest</th></tr>
+        <tr><td class="error-code">E_MANIFEST_SYNTAX</td><td class="error-desc">manifest.json is not valid JSON</td></tr>
+        <tr><td class="error-code">E_MANIFEST_SCHEMA</td><td class="error-desc">manifest.json missing required field or field has wrong type</td></tr>
+        <tr class="error-group"><th colspan="2">Signature</th></tr>
+        <tr><td class="error-code">E_SIG_MISSING</td><td class="error-desc">sig/manifest.sig or sig/publisher.pub not found</td></tr>
+        <tr><td class="error-code">E_SIG_INVALID</td><td class="error-desc">Signature does not verify, key mismatch, or wrong key size for suite</td></tr>
+        <tr class="error-group"><th colspan="2">Integrity</th></tr>
+        <tr><td class="error-code">E_MERKLE_MISMATCH</td><td class="error-desc">Computed Merkle root does not match stored value in manifest</td></tr>
+        <tr class="error-group"><th colspan="2">Schema</th></tr>
+        <tr><td class="error-code">E_SCHEMA_READ</td><td class="error-desc">Parquet file unreadable or exceeds size / row-count limit</td></tr>
+        <tr><td class="error-code">E_SCHEMA_MISSING</td><td class="error-desc">Required Parquet file absent</td></tr>
+        <tr><td class="error-code">E_SCHEMA_TYPE</td><td class="error-desc">Wrong column name, type, or count in a required table</td></tr>
+        <tr><td class="error-code">E_SCHEMA_NULL</td><td class="error-desc">Null value found in a required column</td></tr>
+        <tr><td class="error-code">E_SCHEMA_ENUM</td><td class="error-desc">Invalid object_type or tier value</td></tr>
+        <tr class="error-group"><th colspan="2">Identity</th></tr>
+        <tr><td class="error-code">E_ID_ENTITY</td><td class="error-desc">entity_id does not match recomputed hash from namespace + label</td></tr>
+        <tr><td class="error-code">E_ID_CLAIM</td><td class="error-desc">claim_id does not match recomputed hash from subject + predicate + object</td></tr>
+        <tr class="error-group"><th colspan="2">References</th></tr>
+        <tr><td class="error-code">E_REF_ORPHAN</td><td class="error-desc">Claim subject or entity-type object not found in entities table</td></tr>
+        <tr><td class="error-code">E_REF_SOURCE</td><td class="error-desc">span or provenance source_hash not in content/, or byte range out of bounds</td></tr>
+        <tr><td class="error-code">E_REF_READ</td><td class="error-desc">Content file unreadable during span byte-range verification</td></tr>
+        <tr class="error-group"><th colspan="2">Stream Continuity (REQ 5)</th></tr>
+        <tr><td class="error-code">E_BUFFER_DISCONTINUITY</td><td class="error-desc">Frame gap, bad magic, or truncation in cam_latents.bin (embodied spokes only)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- §09 QUICK START -->
+<section id="quickstart">
+  <div class="page-wrap">
+    <div class="section-header animate-up">
+      <span class="section-number">§ 09</span>
+      <h2>Quick Start</h2>
+    </div>
+    <div class="quickstart-block animate-up delay-1">
+      <div class="qs-header">
+        <span class="qs-title">Install + Verify Gold Shard</span>
+        <span class="qs-badge">bash</span>
+      </div>
+      <div class="qs-body">
+        <div><span class="prompt">$ </span><span class="cmd">pip install -e <span class="arg">".[dev]"</span></span></div>
+        <div>&nbsp;</div>
+        <div><span class="comment"># Verify the gold shard against the canonical test key</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">axm-verify shard <span class="arg">shards/gold/fm21-11-hemorrhage-v1/</span> \</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd">--trusted-key <span class="arg">keys/canonical_test_publisher.pub</span></span></div>
+        <div><span class="output">{"shard":"...","status":"PASS","error_count":0,"errors":[]}</span></div>
+        <div>&nbsp;</div>
+        <div><span class="comment"># Run the full conformance suite (13 tests)</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">python -m pytest <span class="arg">tests/test_conformance.py</span> -v</span></div>
+        <div><span class="output">test_baseline_gold_shard_passes ................... PASSED</span></div>
+        <div><span class="output">test_req1_manifest_byte_flip_detected ............. PASSED</span></div>
+        <div><span class="output">test_req5_buffer_gap_detected ..................... PASSED</span></div>
+        <div><span class="output">13 passed in 0.84s</span></div>
+        <div>&nbsp;</div>
+        <div><span class="comment"># Build a new shard from candidates.jsonl + source</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">axm-build compile <span class="arg">candidates.jsonl content/</span> <span class="arg">out/my-shard/</span> \</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd">--suite <span class="arg">axm-blake3-mldsa44</span> --private-key <span class="arg">keys/my.sk</span></span></div>
+      </div>
+    </div>
+    <div class="quickstart-block animate-up delay-2" style="margin-top:16px;">
+      <div class="qs-header">
+        <span class="qs-title">Reimplementation Requirements</span>
+        <span class="qs-badge">any language</span>
+      </div>
+      <div class="qs-body">
+        <div><span class="comment"># Canonical UTF-8 (NFC normalization)</span></div>
+        <div><span class="comment"># Deterministic JSON (sorted keys, no whitespace)</span></div>
+        <div><span class="comment"># BLAKE3 for Merkle hashing, SHA-256 for content hashing</span></div>
+        <div><span class="comment"># Ed25519 or ML-DSA-44 for signatures</span></div>
+        <div><span class="comment"># Parquet with explicit schemas + deterministic row ordering</span></div>
+        <div>&nbsp;</div>
+        <div><span class="comment"># Correctness is defined by the gold shard.</span></div>
+        <div><span class="comment"># A reimplementation that accepts it and rejects the</span></div>
+        <div><span class="comment"># invalid test vectors is conformant.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="page-wrap">
+    <div class="footer-inner">
+      <div class="footer-left">
+        <div><strong>AXM Genesis</strong> v1.2.0 · Apache-2.0</div>
+        <div>Spec v1.0.0 frozen · Gold shard fm21-11-hemorrhage-v1</div>
+        <div>Post-quantum by default since v1.1.0 (RFC 0001)</div>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/bigbirdreturns/axm-genesis">GitHub</a>
+        <a href="https://bigbirdreturns.github.io/axm-chat/">AXM Chat</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href="#errors">Error Codes</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ── Scroll-tracking nav ──────────────────────────────────────────
+(function(){
+  const navLinks = document.querySelectorAll('#main-nav a[data-section]');
+  const sections = Array.from(document.querySelectorAll('section[id]'));
+  const navH = document.getElementById('main-nav').offsetHeight;
+
+  function updateNav(){
+    let current = sections[0].id;
+    for(const s of sections){
+      if(s.getBoundingClientRect().top <= navH + 32) current = s.id;
+    }
+    navLinks.forEach(a => {
+      a.classList.toggle('active', a.dataset.section === current);
+    });
+  }
+
+  window.addEventListener('scroll', updateNav, {passive:true});
+  updateNav();
+})();
+
+// ── Three-layer onion (vanilla JS + SVG) ────────────────────────
+(function(){
+  const LAYERS = [
+    {
+      id: 'l1',
+      short: 'Layer 1',
+      label: 'Knowledge Shards',
+      role: 'Immutable Reference',
+      color: '#c8a84b',
+      colorDim: 'rgba(200,168,75,0.15)',
+      colorBorder: 'rgba(200,168,75,0.5)',
+      ringR: 80,
+      desc: 'Compiled reference material. Forge extracts claims → Genesis seals with BLAKE3 + ML-DSA-44. The shard is sealed. It never changes. Identity is its Merkle root.',
+      examples: [
+        'FM 21-11 hemorrhage control → claims, entities, spans',
+        'California Family Code §§ 2030–2032 → statute claims',
+        'SEC 10-K XBRL → tier-0 financial extraction, no LLM',
+      ],
+      genesisRole: 'Genesis compiles and signs. axm-verify verifies. Nothing else has write access.',
+    },
+    {
+      id: 'l2',
+      short: 'Layer 2',
+      label: 'Journal Shards',
+      role: 'Decision Traces',
+      color: '#8a9ab8',
+      colorDim: 'rgba(138,154,184,0.1)',
+      colorBorder: 'rgba(138,154,184,0.4)',
+      ringR: 120,
+      desc: 'What happened when knowledge shards were used. Full decision trace: what was queried, retrieved, evaluated, rejected, concluded. The rejection record is the critical field.',
+      examples: [
+        'query:2026-02-21T03:00:00Z:tourniquet-application',
+        'gate:threshold:confidence-0.85:passed',
+        'gate:rejection:claim-xyz:below-threshold',
+      ],
+      genesisRole: 'Session ends → hot buffer compiled via Forge → Genesis seals. Journal shards are mountable in Spectra.',
+    },
+    {
+      id: 'l3',
+      short: 'Layer 3',
+      label: 'Hot Buffer',
+      role: 'Working Memory',
+      color: '#6a8a6a',
+      colorDim: 'rgba(106,138,106,0.08)',
+      colorBorder: 'rgba(106,138,106,0.3)',
+      ringR: 160,
+      desc: 'Append-only working memory. No cryptographic overhead. No hashing, no signing. Nanosecond writes. Compiled into a journal shard at seal trigger: session end, size threshold, power loss.',
+      examples: [
+        '{"type":"query","text":"tourniquet application?"}',
+        '{"type":"gate","gate_type":"threshold","score":0.92}',
+        '{"type":"emission","citations":["c:1","c:2"]}',
+      ],
+      genesisRole: 'Genesis does NOT touch the hot buffer. It seals only when the buffer is compiled at session boundary.',
+    },
+  ];
+
+  let active = 'l1';
+  const cx = 200, cy = 200, svgSize = 400;
+
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, parent){
+    const e = document.createElementNS(NS, tag);
+    for(const [k,v] of Object.entries(attrs||{})) e.setAttribute(k,v);
+    if(parent) parent.appendChild(e);
+    return e;
+  }
+
+  // Build SVG
+  const svg = el('svg', {width:svgSize, height:svgSize, viewBox:`0 0 ${svgSize} ${svgSize}`, class:'onion-svg'});
+
+  // Defs — glow filters
+  const defs = el('defs', {}, svg);
+  ['amber','blue','green'].forEach((name,i)=>{
+    const f = el('filter', {id:`glow-${name}`}, defs);
+    el('feGaussianBlur', {stdDeviation:'4', result:'coloredBlur'}, f);
+    const merge = el('feMerge', {}, f);
+    el('feMergeNode', {in:'coloredBlur'}, merge);
+    el('feMergeNode', {in:'SourceGraphic'}, merge);
+  });
+
+  // Grid lines
+  for(let i=0;i<8;i++){
+    el('line',{x1:i*57,y1:0,x2:i*57,y2:svgSize,stroke:'#1e1e22','stroke-width':1}, svg);
+    el('line',{x1:0,y1:i*57,x2:svgSize,y2:i*57,stroke:'#1e1e22','stroke-width':1}, svg);
+  }
+
+  // Rings (outer → inner, so inner renders on top)
+  const ringEls = {};
+  [...LAYERS].reverse().forEach(l=>{
+    const c = el('circle',{cx,cy,r:l.ringR,fill:'transparent',stroke:'#2a2a2e','stroke-width':1,style:'cursor:pointer;transition:all 0.3s;'}, svg);
+    c.addEventListener('click',()=>setLayer(l.id));
+    ringEls[l.id] = c;
+  });
+
+  // Arc labels
+  const arcEls = {};
+  LAYERS.forEach(l=>{
+    const r = l.ringR;
+    const sweep = l.id==='l3'?110:l.id==='l2'?100:90;
+    const startA = (180-sweep)/2;
+    const endA = startA+sweep;
+    const toRad = a=>(a-90)*Math.PI/180;
+    const x1=cx+r*Math.cos(toRad(startA)), y1=cy+r*Math.sin(toRad(startA));
+    const x2=cx+r*Math.cos(toRad(endA)),   y2=cy+r*Math.sin(toRad(endA));
+    const pathId=`arc-${l.id}`;
+    const g = el('g',{}, svg);
+    el('path',{id:pathId, d:`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`, fill:'none', stroke:'none'}, g);
+    const txt = el('text',{style:'cursor:pointer;'}, g);
+    txt.addEventListener('click',()=>setLayer(l.id));
+    const tp = el('textPath',{href:`#${pathId}`, startOffset:'50%', 'text-anchor':'middle',
+      style:`font-size:${l.id==='l1'?'9':'9.5'}px;font-weight:500;letter-spacing:0.15em;fill:#444450;text-transform:uppercase;transition:fill 0.3s;font-family:'DM Mono',monospace;`}, txt);
+    tp.textContent = l.label;
+    arcEls[l.id] = tp;
+  });
+
+  // Center crosshairs + label
+  el('line',{x1:cx-8,y1:cy,x2:cx+8,y2:cy,stroke:'#2a2a2e','stroke-width':1}, svg);
+  el('line',{x1:cx,y1:cy-8,x2:cx,y2:cy+8,stroke:'#2a2a2e','stroke-width':1}, svg);
+  el('circle',{cx,cy,r:3,fill:'#c8a84b',opacity:0.6}, svg);
+
+  const centerLabel = el('text',{x:cx,y:cy-8,'text-anchor':'middle',
+    style:"font-size:8px;fill:#c8a84b;letter-spacing:0.2em;font-family:'Bebas Neue',sans-serif;"}, svg);
+  centerLabel.textContent='GENESIS';
+  const centerSub = el('text',{x:cx,y:cy+10,'text-anchor':'middle',
+    style:"font-size:7px;fill:#444450;letter-spacing:0.15em;font-family:'DM Mono',monospace;"}, svg);
+  centerSub.textContent='KERNEL';
+
+  // Build tabs
+  const tabsEl = document.createElement('div');
+  tabsEl.className='onion-tabs';
+  LAYERS.forEach(l=>{
+    const btn = document.createElement('button');
+    btn.className='onion-tab';
+    btn.dataset.layer=l.id;
+    btn.textContent=l.short;
+    btn.addEventListener('click',()=>setLayer(l.id));
+    tabsEl.appendChild(btn);
+  });
+
+  // Detail panel
+  const detailEl = document.createElement('div');
+  detailEl.className='onion-detail';
+
+  // Wrap
+  const wrap = document.createElement('div');
+  wrap.className='onion-wrap';
+  const left = document.createElement('div');
+  left.className='onion-left';
+  left.appendChild(svg);
+  left.appendChild(tabsEl);
+  wrap.appendChild(left);
+  wrap.appendChild(detailEl);
+  document.getElementById('genesis-layers-onion').appendChild(wrap);
+
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+  function setLayer(id){
+    active=id;
+    const L=LAYERS.find(l=>l.id===id);
+
+    // Update rings
+    LAYERS.forEach(l=>{
+      const r=ringEls[l.id];
+      const isA=l.id===id;
+      r.setAttribute('fill', isA?l.colorDim:'transparent');
+      r.setAttribute('stroke', isA?l.colorBorder:'#2a2a2e');
+      r.setAttribute('stroke-width', isA?'2':'1');
+      r.setAttribute('filter', isA?(l.id==='l1'?'url(#glow-amber)':l.id==='l2'?'url(#glow-blue)':'url(#glow-green)'):'none');
+      r.style.opacity = isA?'1':'0.6';
+    });
+    // Update arc labels
+    LAYERS.forEach(l=>{
+      arcEls[l.id].style.fill = l.id===id ? l.color : '#444450';
+    });
+    // Update tabs
+    tabsEl.querySelectorAll('.onion-tab').forEach(t=>{
+      const isA=t.dataset.layer===id;
+      t.classList.toggle('active',isA);
+      t.style.borderTopColor = isA?L.color:'transparent';
+      t.style.color = isA?L.color:'';
+    });
+    // Update detail
+    const examples = L.examples.map(e=>`<div class="od-example">${esc(e)}</div>`).join('');
+    detailEl.style.borderLeftColor = L.color;
+    detailEl.innerHTML=`
+      <div class="od-eyebrow" style="color:${L.color}">${esc(L.short)} · ${esc(L.role)}</div>
+      <div class="od-name">${esc(L.label)}</div>
+      <p class="od-desc">${esc(L.desc)}</p>
+      <div class="od-examples-label">Examples</div>
+      ${examples}
+      <div class="od-genesis-box">
+        <div class="od-genesis-label">Genesis Role</div>
+        <div class="od-genesis-text">${esc(L.genesisRole)}</div>
+      </div>`;
+    // Re-trigger fade animation
+    detailEl.style.animation='none';
+    detailEl.offsetHeight; // reflow
+    detailEl.style.animation='';
+  }
+
+  setLayer('l1');
+})();
+</script>
+</body>
+</html>
