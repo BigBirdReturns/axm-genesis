@@ -27,6 +27,12 @@
     --mono:   'DM Mono', monospace;
     --serif:  'Crimson Pro', Georgia, serif;
     --display:'Bebas Neue', sans-serif;
+    --eco-bg:       #0e0e0f;
+    --eco-border:   #2a2a2e;
+    --eco-text:     #666672;
+    --eco-text-hi:  #d4d4dc;
+    --eco-accent:   #c8a84b;
+    --eco-mono:     'DM Mono', monospace;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -377,6 +383,150 @@
 </style>
 </head>
 <body>
+<!--
+  AXM Ecosystem Nav — shared across all pages
+  
+  USAGE: Paste this block at the top of <body> in each page.
+  Set data-active to the current page's key.
+  
+  The nav reads CSS custom properties from the host page:
+    --eco-bg       (fallback: #0e0e0f)
+    --eco-border   (fallback: #2a2a2e)  
+    --eco-text     (fallback: #666)
+    --eco-text-hi  (fallback: #e0e0e0)
+    --eco-accent   (fallback: #c8a84b)
+    --eco-mono     (fallback: 'DM Mono', monospace)
+  
+  Each page sets these in its :root {} to match its palette.
+-->
+<style>
+.eco-nav {
+  position: relative;
+  z-index: 900;
+  background: var(--eco-bg, #0e0e0f);
+  border-bottom: 1px solid var(--eco-border, #2a2a2e);
+  font-family: var(--eco-mono, 'DM Mono', monospace);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  user-select: none;
+}
+.eco-nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  gap: 6px;
+}
+.eco-nav-brand {
+  color: var(--eco-text, #666);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  margin-right: 12px;
+  white-space: nowrap;
+}
+.eco-nav-brand strong {
+  color: var(--eco-text-hi, #e0e0e0);
+  font-weight: 500;
+}
+.eco-nav-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--eco-border, #2a2a2e);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+.eco-nav a {
+  color: var(--eco-text, #666);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+  position: relative;
+}
+.eco-nav a:hover {
+  color: var(--eco-text-hi, #e0e0e0);
+  background: rgba(255,255,255,0.03);
+}
+.eco-nav a.eco-active {
+  color: var(--eco-accent, #c8a84b);
+}
+.eco-nav a.eco-active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: var(--eco-accent, #c8a84b);
+  opacity: 0.6;
+}
+.eco-nav-kind {
+  font-size: 8px;
+  opacity: 0.5;
+  display: inline-block;
+  margin-left: 2px;
+  vertical-align: top;
+}
+.eco-nav-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.eco-nav-github {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+.eco-nav-github:hover {
+  opacity: 0.8;
+}
+@media (max-width: 768px) {
+  .eco-nav-inner { 
+    overflow-x: auto; 
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .eco-nav-inner::-webkit-scrollbar { display: none; }
+  .eco-nav a { padding: 6px 7px; font-size: 9px; }
+  .eco-nav-brand { display: none; }
+}
+</style>
+
+<div class="eco-nav" data-active="genesis">
+  <div class="eco-nav-inner">
+    <div class="eco-nav-brand"><strong>AXM</strong> &nbsp;Protocol</div>
+    <div class="eco-nav-sep"></div>
+    <a href="https://bigbirdreturns.github.io/axm-genesis/" data-page="genesis">Genesis<span class="eco-nav-kind"> kernel</span></a>
+    <a href="https://bigbirdreturns.github.io/axm-core/" data-page="core">Core<span class="eco-nav-kind"> hub</span></a>
+    <div class="eco-nav-sep"></div>
+    <a href="https://bigbirdreturns.github.io/axm-chat/" data-page="chat">Chat<span class="eco-nav-kind"> spoke</span></a>
+    <a href="https://bigbirdreturns.github.io/axm-show/" data-page="show">Show<span class="eco-nav-kind"> spoke</span></a>
+    <a href="https://bigbirdreturns.github.io/axm-embodied/" data-page="embodied">Embodied<span class="eco-nav-kind"> spoke</span></a>
+    <div class="eco-nav-right">
+      <a href="https://github.com/BigBirdReturns" class="eco-nav-github" target="_blank" title="GitHub">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+// Auto-highlight active page based on data-active attribute
+(function() {
+  const nav = document.querySelector('.eco-nav');
+  if (!nav) return;
+  const active = nav.dataset.active;
+  if (active) {
+    const link = nav.querySelector(`[data-page="${active}"]`);
+    if (link) link.classList.add('eco-active');
+  }
+})();
+</script>
+
 
 <header>
   <div class="header-scanline"></div>
@@ -819,7 +969,7 @@
         <div>Post-quantum by default since v1.1.0 (RFC 0001)</div>
       </div>
       <div class="footer-links">
-        <a href="https://github.com/bigbirdreturns/axm-genesis">GitHub</a>
+        <a href="https://github.com/BigBirdReturns/axm-genesis">GitHub</a>
         <a href="https://bigbirdreturns.github.io/axm-chat/">AXM Chat</a>
         <a href="#quickstart">Quick Start</a>
         <a href="#errors">Error Codes</a>
