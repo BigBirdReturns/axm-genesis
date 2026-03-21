@@ -18,7 +18,7 @@
     --amber-dim: #7a6530;
     --amber-glow:#e8c870;
     --platinum:  #b8b8c0;
-    --dim:       #666672;
+    --dim:       #8a8a98;
     --text:      #d4d4dc;
     --text-hi:   #eeeef4;
     --red-dim:   #7a3535;
@@ -29,7 +29,7 @@
     --display:'Bebas Neue', sans-serif;
     --eco-bg:       #0e0e0f;
     --eco-border:   #2a2a2e;
-    --eco-text:     #666672;
+    --eco-text:     #8a8a98;
     --eco-text-hi:  #d4d4dc;
     --eco-accent:   #c8a84b;
     --eco-mono:     'DM Mono', monospace;
@@ -42,7 +42,7 @@
     background: var(--bg);
     color: var(--text);
     font-family: var(--serif);
-    font-size: 17px;
+    font-size: clamp(15px, 1.6vw, 18px);
     line-height: 1.65;
     min-height: 100vh;
     overflow-x: hidden;
@@ -82,7 +82,7 @@
   .delay-3     { animation-delay: 0.35s; }
 
   /* ── LAYOUT ── */
-  .page-wrap { max-width: 1140px; margin: 0 auto; padding: 0 40px; }
+  .page-wrap { max-width: 1140px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px); }
 
   /* ── HEADER ── */
   header {
@@ -368,8 +368,8 @@
 
   /* ── RESPONSIVE ── */
   @media (max-width: 900px) {
-    .page-wrap { padding: 0 24px; }
-    .header-inner { grid-template-columns: 1fr; }
+    .page-wrap { padding: 0 20px; }
+    .header-inner { grid-template-columns: 1fr; gap: 24px; padding: 40px 0 28px; }
     .header-meta { text-align: left; margin-top: 20px; }
     .manifesto { grid-template-columns: 1fr; }
     .primitives-grid { grid-template-columns: repeat(2, 1fr); }
@@ -378,7 +378,14 @@
     .onion-svg { max-width: 340px; }
   }
   @media (max-width: 580px) {
+    body { font-size: 15px; }
     .primitives-grid { grid-template-columns: 1fr; }
+    h1 { font-size: clamp(36px, 10vw, 56px); }
+    .header-inner { padding: 28px 0 20px; }
+    .section-header h2 { font-size: clamp(20px, 5vw, 28px); }
+    .version-block { font-size: 10px; }
+    nav ul { gap: 0; }
+    nav a { font-size: 10px; padding: 10px 8px; }
   }
 </style>
 </head>
@@ -969,7 +976,7 @@
         <div>Post-quantum by default since v1.1.0 (RFC 0001)</div>
       </div>
       <div class="footer-links">
-        <a href="https://github.com/BigBirdReturns/axm-genesis">GitHub</a>
+        <a href="https://github.com/bigbirdreturns/axm-genesis">GitHub</a>
         <a href="https://bigbirdreturns.github.io/axm-chat/">AXM Chat</a>
         <a href="#quickstart">Quick Start</a>
         <a href="#errors">Error Codes</a>
