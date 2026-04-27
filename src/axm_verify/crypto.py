@@ -16,12 +16,32 @@ import blake3
 from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
 
-# Attempt to import ML-DSA-44
+# ML-DSA-44 backend: prefer liboqs (C bindings) over pure-Python dilithium-py.
 try:
-    from dilithium_py.dilithium import Dilithium2 as _Dilithium2
+    import oqs as _oqs
     _HAS_MLDSA = True
+
+    def _mldsa44_verify(pk: bytes, msg: bytes, sig: bytes) -> bool:
+        with _oqs.Signature("ML-DSA-44") as _v:
+            return bool(_v.verify(msg, sig, pk))
+
 except ImportError:
-    _HAS_MLDSA = False
+    try:
+        from dilithium_py.dilithium import Dilithium2 as _Dilithium2
+        _HAS_MLDSA = True
+
+        def _mldsa44_verify(pk: bytes, msg: bytes, sig: bytes) -> bool:
+            return _Dilithium2.verify(pk, msg, sig)
+
+    except ImportError:
+        _HAS_MLDSA = False
+
+        def _mldsa44_verify(pk: bytes, msg: bytes, sig: bytes) -> bool:  # type: ignore[misc]
+            raise RuntimeError(
+                "No ML-DSA-44 backend installed — cannot verify ML-DSA-44 signatures. "
+                "Run: pip install liboqs-python  (preferred) "
+                "or: pip install dilithium-py"
+            )
 
 # Policy limits (implementation hardening, not protocol)
 MAX_MERKLE_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
@@ -188,9 +208,7 @@ def verify_manifest_signature(
         return False
 
     if suite == "axm-blake3-mldsa44":
-        if not _HAS_MLDSA:
-            raise RuntimeError("dilithium-py not installed — cannot verify ML-DSA-44 signatures")
-        return _Dilithium2.verify(pub, manifest_bytes, sig)
+        return _mldsa44_verify(pub, manifest_bytes, sig)
     else:
         try:
             VerifyKey(pub).verify(manifest_bytes, sig)

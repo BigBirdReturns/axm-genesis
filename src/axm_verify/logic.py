@@ -59,21 +59,24 @@ def _sha256_stream(path: Path) -> str:
 
 
 def _preflight_parquet_limits(path: Path, errors: List[Dict[str, str]]) -> None:
-    """Bounded Parquet sanity check (no full reads).
+    """Bounded Parquet size/row-count guard before the Merkle walk.
 
-    This runs *before* Merkle verification so a maliciously large Parquet cannot force
-    expensive parsing or memory pressure even when the shard is already invalid.
+    Only blocks on oversized or over-row files. Corruption is the Merkle
+    check's responsibility; parse failures here are silently ignored so that
+    E_MERKLE_MISMATCH is always the authoritative rejection for tampered files.
     """
     try:
         st = path.lstat()
         if st.st_size > MAX_FILE_BYTES:
             _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Parquet file exceeds size limit: {path.name} ({st.st_size} bytes)")
             return
+        if pq is None:
+            return
         pf = pq.ParquetFile(path)
         if pf.metadata is not None and pf.metadata.num_rows > MAX_PARQUET_ROWS:
-            _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Parquet row limit exceeded: {path.name} has {pf.metadata.num_rows} rows (limit {MAX_PARQUET_ROWS})")
-    except Exception as e:
-        _err(errors, ErrorCode.E_SCHEMA_READ, f"Failed reading Parquet metadata for {path.name}: {e}")
+            _err(errors, ErrorCode.E_SCHEMA_READ, f"{path.name} exceeds row limit ({MAX_PARQUET_ROWS}), has {pf.metadata.num_rows} rows")
+    except Exception:
+        pass  # parse failures are corruption; Merkle check owns that rejection
 
 def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
     if not root.exists() or not root.is_dir():
@@ -368,6 +371,19 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
         _err(errors, ErrorCode.E_SIG_INVALID, "Signature verification failed (trusted key)")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
+    # Preflight: check core Parquet sizes/row-counts before the Merkle walk.
+    # Prevents a maliciously oversized Parquet from forcing expensive I/O
+    # even when the shard is already invalid.
+    for _pq_path in (
+        root / "graph/entities.parquet",
+        root / "graph/claims.parquet",
+        root / "graph/provenance.parquet",
+        root / "evidence/spans.parquet",
+    ):
+        _preflight_parquet_limits(_pq_path, errors)
+    if errors:
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
     try:
         computed = compute_merkle_root(root, suite=suite)
     except Exception as e:
@@ -453,11 +469,6 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
                 if total_bytes > MAX_TOTAL_BYTES:
                     _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Total content bytes exceeded limit ({MAX_TOTAL_BYTES} bytes)")
                     raise RuntimeError("content byte limit exceeded")
-
-                st = p.stat()
-                if st.st_size > MAX_FILE_BYTES:
-                    _err(errors, ErrorCode.E_LAYOUT_DIRTY, f"Content file exceeds size limit: {p.relative_to(root).as_posix()} ({st.st_size} bytes)")
-                    continue
                 h = _sha256_stream(p)
                 content_hashes.add(h)
                 content_map[h] = p

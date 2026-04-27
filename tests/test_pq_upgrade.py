@@ -150,6 +150,7 @@ class TestMLDSA44Compilation:
     def _make_test_shard(self, suite="axm-blake3-mldsa44"):
         """Helper: compile a minimal test shard with given suite."""
         from axm_build.compiler_generic import CompilerConfig, compile_generic_shard
+        from axm_build.sign import mldsa44_keygen
 
         workdir = Path(tempfile.mkdtemp(prefix="axm_pq_test_"))
         source = workdir / "source.txt"
@@ -173,11 +174,17 @@ class TestMLDSA44Compilation:
         (shard_dir / "content").mkdir()
         (shard_dir / "sig").mkdir()
 
+        if suite == "axm-blake3-mldsa44":
+            kp = mldsa44_keygen()
+            private_key = kp.secret_key + kp.public_key  # sk||pk (3840 bytes)
+        else:
+            private_key = secrets.token_bytes(32)
+
         cfg = CompilerConfig(
             source_path=source,
             candidates_path=candidates,
             out_dir=shard_dir,
-            private_key=secrets.token_bytes(32),  # ignored for mldsa44 — keygen happens inside
+            private_key=private_key,
             publisher_id="pub:test",
             publisher_name="Test Publisher",
             namespace="test:pq",
