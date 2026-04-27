@@ -50,7 +50,7 @@ try:
         with _oqs.Signature("ML-DSA-44") as _v:
             return bool(_v.verify(msg, sig, pk))
 
-except ImportError:
+except (ImportError, SystemExit):
     try:
         from dilithium_py.dilithium import Dilithium2 as _Dilithium2
         _HAS_MLDSA = True
