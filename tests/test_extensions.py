@@ -171,6 +171,7 @@ def test_compiler_creates_ext_dir(tmp_path):
         publisher_name="Test",
         namespace="test/medical",
         created_at="2026-01-01T00:00:00Z",
+        suite="ed25519",
     )
     ok = compile_generic_shard(cfg)
     assert ok
@@ -202,6 +203,7 @@ def test_compiler_no_extensions_in_manifest_when_ext_empty(tmp_path):
         publisher_name="Test",
         namespace="test/medical",
         created_at="2026-01-01T00:00:00Z",
+        suite="ed25519",
     )
     ok = compile_generic_shard(cfg)
     assert ok
@@ -235,6 +237,7 @@ def test_compiler_shard_with_ext_file_verifies(tmp_path):
         publisher_name="Test",
         namespace="test/medical",
         created_at="2026-01-01T00:00:00Z",
+        suite="ed25519",
     )
     ok = compile_generic_shard(cfg)
     assert ok
