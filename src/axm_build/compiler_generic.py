@@ -343,24 +343,24 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
             (cfg.out_dir / "sig" / "publisher.pub").write_bytes(pk_bytes)
             (cfg.out_dir / "sig" / "manifest.sig").write_bytes(sig)
         elif len(cfg.private_key) == 2528:
-            # SK only — sign with it, but we need pk from somewhere.
-            # Check if publisher.pub already exists (e.g. caller pre-placed it).
+            # SK only — need the matching pk from somewhere.
+            # Caller must pre-place publisher.pub (1312 bytes) before calling.
             pub_path = cfg.out_dir / "sig" / "publisher.pub"
             if pub_path.exists() and pub_path.stat().st_size == 1312:
                 sig = mldsa44_sign(cfg.private_key, manifest_bytes)
                 (cfg.out_dir / "sig" / "manifest.sig").write_bytes(sig)
             else:
-                # No pk available — generate fresh keypair, discard caller's sk.
-                kp = mldsa44_keygen()
-                sig = kp.sign(manifest_bytes)
-                (cfg.out_dir / "sig" / "publisher.pub").write_bytes(kp.public_key)
-                (cfg.out_dir / "sig" / "manifest.sig").write_bytes(sig)
+                raise ValueError(
+                    "ML-DSA-44 secret key (2528 bytes) provided but no matching public key found. "
+                    "Either pass sk||pk concatenated (3840 bytes) or pre-place publisher.pub "
+                    "(1312 bytes) at sig/publisher.pub before calling compile_generic_shard."
+                )
         else:
-            # Unknown key size — generate fresh keypair.
-            kp = mldsa44_keygen()
-            sig = kp.sign(manifest_bytes)
-            (cfg.out_dir / "sig" / "publisher.pub").write_bytes(kp.public_key)
-            (cfg.out_dir / "sig" / "manifest.sig").write_bytes(sig)
+            raise ValueError(
+                f"private_key length {len(cfg.private_key)} is not valid for suite "
+                f"'{cfg.suite}'. ML-DSA-44 requires sk||pk concatenated (3840 bytes) "
+                "or sk alone (2528 bytes) with publisher.pub pre-placed."
+            )
     else:
         # Legacy Ed25519
         sk = signing_key_from_private_key_bytes(cfg.private_key)

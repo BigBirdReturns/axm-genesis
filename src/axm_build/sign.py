@@ -6,7 +6,12 @@ Supports two suites:
   - "axm-blake3-mldsa44"   : Post-quantum ML-DSA-44 (FIPS 204 / Dilithium2).
                               Deterministic. 2528-byte sk, 1312-byte pk, 2420-byte sig.
 
-The compiler decides which suite to use. sign.py just signs and returns bytes.
+ML-DSA-44 backend selection (in preference order):
+  1. liboqs-python (import oqs) — production C bindings, FIPS 140-3 validated.
+     Install: pip install liboqs-python  (requires liboqs shared library)
+  2. dilithium-py — pure-Python reference implementation, unaudited.
+     Install: pip install dilithium-py
+  Raises RuntimeError at call time if neither is present.
 """
 from __future__ import annotations
 
@@ -24,14 +29,60 @@ def signing_key_from_private_key_bytes(private_key_32: bytes) -> _Ed25519Signing
     return _Ed25519SigningKey(private_key_32)
 
 
-# ── ML-DSA-44 (post-quantum) ────────────────────────────────────────────────
+# ── ML-DSA-44 backend selection ──────────────────────────────────────────────
+# Prefer liboqs (production C library) over pure-Python dilithium-py.
 
 try:
-    from dilithium_py.dilithium import Dilithium2 as _Dilithium2
+    import oqs as _oqs
     _HAS_MLDSA = True
-except ImportError:
-    _HAS_MLDSA = False
 
+    def _mldsa44_keygen_raw() -> tuple[bytes, bytes]:
+        with _oqs.Signature("ML-DSA-44") as _s:
+            pk = _s.generate_keypair()
+            sk = _s.export_secret_key()
+        return pk, sk
+
+    def _mldsa44_sign_raw(sk: bytes, msg: bytes) -> bytes:
+        with _oqs.Signature("ML-DSA-44", secret_key=sk) as _s:
+            return bytes(_s.sign(msg))
+
+    def _mldsa44_verify_raw(pk: bytes, msg: bytes, sig: bytes) -> bool:
+        with _oqs.Signature("ML-DSA-44") as _v:
+            return bool(_v.verify(msg, sig, pk))
+
+except (ImportError, SystemExit):
+    try:
+        from dilithium_py.dilithium import Dilithium2 as _Dilithium2
+        _HAS_MLDSA = True
+
+        def _mldsa44_keygen_raw() -> tuple[bytes, bytes]:
+            pk, sk = _Dilithium2.keygen()
+            return pk, sk
+
+        def _mldsa44_sign_raw(sk: bytes, msg: bytes) -> bytes:
+            return _Dilithium2.sign(sk, msg)
+
+        def _mldsa44_verify_raw(pk: bytes, msg: bytes, sig: bytes) -> bool:
+            return _Dilithium2.verify(pk, msg, sig)
+
+    except ImportError:
+        _HAS_MLDSA = False
+
+        def _mldsa44_keygen_raw() -> tuple[bytes, bytes]:  # type: ignore[misc]
+            raise RuntimeError(
+                "No ML-DSA-44 backend installed. "
+                "Run: pip install liboqs-python  (preferred, requires liboqs) "
+                "or: pip install dilithium-py  (pure-Python fallback)"
+            )
+
+        def _mldsa44_sign_raw(sk: bytes, msg: bytes) -> bytes:  # type: ignore[misc]
+            raise RuntimeError("No ML-DSA-44 backend installed.")
+
+        def _mldsa44_verify_raw(pk: bytes, msg: bytes, sig: bytes) -> bool:  # type: ignore[misc]
+            raise RuntimeError("No ML-DSA-44 backend installed.")
+
+
+# ── Public ML-DSA-44 API ─────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class MLDSAKeyPair:
@@ -41,9 +92,7 @@ class MLDSAKeyPair:
 
     def sign(self, message: bytes) -> bytes:
         """Deterministic sign. Same key + same message = same signature, always."""
-        if not _HAS_MLDSA:
-            raise RuntimeError("dilithium-py not installed")
-        return _Dilithium2.sign(self.secret_key, message)
+        return _mldsa44_sign_raw(self.secret_key, message)
 
     @property
     def verify_key_bytes(self) -> bytes:
@@ -52,24 +101,18 @@ class MLDSAKeyPair:
 
 def mldsa44_keygen() -> MLDSAKeyPair:
     """Generate a fresh ML-DSA-44 key pair."""
-    if not _HAS_MLDSA:
-        raise RuntimeError("dilithium-py not installed — pip install dilithium-py")
-    pk, sk = _Dilithium2.keygen()
+    pk, sk = _mldsa44_keygen_raw()
     return MLDSAKeyPair(public_key=pk, secret_key=sk)
 
 
 def mldsa44_sign(secret_key: bytes, message: bytes) -> bytes:
     """Sign with ML-DSA-44. Returns 2420-byte signature."""
-    if not _HAS_MLDSA:
-        raise RuntimeError("dilithium-py not installed")
-    return _Dilithium2.sign(secret_key, message)
+    return _mldsa44_sign_raw(secret_key, message)
 
 
 def mldsa44_verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
     """Verify ML-DSA-44 signature. Returns True/False."""
-    if not _HAS_MLDSA:
-        raise RuntimeError("dilithium-py not installed")
-    return _Dilithium2.verify(public_key, message, signature)
+    return _mldsa44_verify_raw(public_key, message, signature)
 
 
 # ── Suite constants ──────────────────────────────────────────────────────────

@@ -67,3 +67,66 @@ except ImportError:
     @pytest.mark.skip(reason="dilithium-py not installed")
     def test_mldsa44_skip():
         pass
+
+
+# ── Cross-backend compatibility ──────────────────────────────────────────────
+# Signs with dilithium-py raw API, verifies with liboqs raw API (and vice versa).
+# Both implement FIPS 204; they must produce interoperable keys and signatures.
+# Skipped unless both backends are available in the test environment.
+
+def _try_backends():
+    """Return (oqs_mod, dilithium2_cls) or (None, None) for each missing backend."""
+    try:
+        import oqs as _oqs
+        oqs_mod = _oqs
+    except ImportError:
+        oqs_mod = None
+    try:
+        from dilithium_py.dilithium import Dilithium2 as _D2
+        d2_cls = _D2
+    except ImportError:
+        d2_cls = None
+    return oqs_mod, d2_cls
+
+
+_oqs_mod, _d2_cls = _try_backends()
+_both_backends = pytest.mark.skipif(
+    _oqs_mod is None or _d2_cls is None,
+    reason="both liboqs-python and dilithium-py required for cross-backend test"
+)
+
+
+@_both_backends
+def test_cross_backend_dilithium_sign_oqs_verify():
+    """Signature produced by dilithium-py must verify under liboqs."""
+    pk, sk = _d2_cls.keygen()
+    msg = b"cross-backend: dilithium signs, oqs verifies"
+    sig = _d2_cls.sign(sk, msg)
+    with _oqs_mod.Signature("ML-DSA-44") as v:
+        assert v.verify(msg, sig, pk), "liboqs rejected a dilithium-py signature"
+
+
+@_both_backends
+def test_cross_backend_oqs_sign_dilithium_verify():
+    """Signature produced by liboqs must verify under dilithium-py."""
+    with _oqs_mod.Signature("ML-DSA-44") as s:
+        pk = s.generate_keypair()
+        sk = s.export_secret_key()
+        msg = b"cross-backend: oqs signs, dilithium verifies"
+        sig = s.sign(msg)
+    assert _d2_cls.verify(pk, msg, sig), "dilithium-py rejected a liboqs signature"
+
+
+@_both_backends
+def test_cross_backend_key_sizes_match():
+    """Both backends produce keys and signatures of identical byte lengths."""
+    pk_d, sk_d = _d2_cls.keygen()
+    with _oqs_mod.Signature("ML-DSA-44") as s:
+        pk_o = s.generate_keypair()
+        sk_o = s.export_secret_key()
+        sig_o = s.sign(b"size check")
+    sig_d = _d2_cls.sign(sk_d, b"size check")
+
+    assert len(pk_d) == len(pk_o) == 1312
+    assert len(sk_d) == len(sk_o) == 2528
+    assert len(sig_d) == len(sig_o) == 2420
