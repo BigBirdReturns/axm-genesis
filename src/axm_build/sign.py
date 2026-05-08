@@ -76,10 +76,18 @@ except (ImportError, SystemExit):
             )
 
         def _mldsa44_sign_raw(sk: bytes, msg: bytes) -> bytes:  # type: ignore[misc]
-            raise RuntimeError("No ML-DSA-44 backend installed.")
+            raise RuntimeError(
+                "No ML-DSA-44 backend installed. "
+                "Run: pip install liboqs-python  (preferred, requires liboqs) "
+                "or: pip install dilithium-py  (pure-Python fallback)"
+            )
 
         def _mldsa44_verify_raw(pk: bytes, msg: bytes, sig: bytes) -> bool:  # type: ignore[misc]
-            raise RuntimeError("No ML-DSA-44 backend installed.")
+            raise RuntimeError(
+                "No ML-DSA-44 backend installed. "
+                "Run: pip install liboqs-python  (preferred, requires liboqs) "
+                "or: pip install dilithium-py  (pure-Python fallback)"
+            )
 
 
 # ── Public ML-DSA-44 API ─────────────────────────────────────────────────────
