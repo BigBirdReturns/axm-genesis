@@ -69,6 +69,32 @@ def test_falls_back_to_dilithium_when_oqs_missing(monkeypatch):
     assert sign_mod.mldsa44_verify(kp.public_key, b"msg", sig)
 
 
+def test_falls_back_to_dilithium_when_oqs_raises_systemexit(monkeypatch):
+    """liboqs import can raise SystemExit if native library is missing; fallback must still work."""
+    fake_mod = types.SimpleNamespace(
+        Dilithium2=types.SimpleNamespace(
+            keygen=lambda: (b"p" * 1312, b"s" * 2528),
+            sign=lambda _sk, _msg: b"z" * 2420,
+            verify=lambda _pk, _msg, _sig: True,
+        )
+    )
+    monkeypatch.setitem(sys.modules, "dilithium_py.dilithium", fake_mod)
+
+    real_import = builtins.__import__
+
+    def gated_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "oqs":
+            raise SystemExit("forced oqs system exit")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", gated_import)
+    sign_mod = importlib.reload(importlib.import_module("axm_build.sign"))
+
+    kp = sign_mod.mldsa44_keygen()
+    sig = sign_mod.mldsa44_sign(kp.secret_key, b"msg")
+    assert sign_mod.mldsa44_verify(kp.public_key, b"msg", sig)
+
+
 def test_compiler_rejects_invalid_mldsa_key_lengths(tmp_path):
     """ML-DSA compile path must reject malformed private key blobs loudly."""
     from axm_build.compiler_generic import CompilerConfig, compile_generic_shard
