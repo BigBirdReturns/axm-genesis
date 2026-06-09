@@ -85,15 +85,62 @@ def test_shard_with_empty_ext_passes(tmp_path):
     assert res["status"] == "PASS"
 
 
+def _declare_ext(shard: Path, identifiers: list[str]) -> None:
+    """Set manifest.extensions before re-signing."""
+    manifest = json.loads((shard / "manifest.json").read_text())
+    manifest["extensions"] = identifiers
+    (shard / "manifest.json").write_bytes(dumps_canonical_json(manifest))
+
+
 @needs_gold
 def test_shard_with_ext_file_covered_by_merkle(tmp_path):
-    """ext/ files are included in Merkle tree. Valid if re-signed."""
+    """ext/ files are included in Merkle tree. A spec-10-conformant ext shard
+    (versioned filename + declared in manifest.extensions) passes."""
+    shard = _copy_gold(tmp_path)
+    (shard / "ext").mkdir()
+    (shard / "ext" / "spatial@1.parquet").write_bytes(b"placeholder")
+    _declare_ext(shard, ["spatial@1"])
+    _resign(shard)
+    res = verify_shard(shard, trusted_key_path=TRUSTED_KEY)
+    assert res["status"] == "PASS", res["errors"]
+
+
+@needs_gold
+def test_ext_file_not_declared_in_manifest_rejected(tmp_path):
+    """spec 10: ext/ non-empty -> manifest.extensions must list the identifiers.
+    A present-but-undeclared ext file must fail even when re-signed."""
+    shard = _copy_gold(tmp_path)
+    (shard / "ext").mkdir()
+    (shard / "ext" / "spatial@1.parquet").write_bytes(b"placeholder")
+    _resign(shard)  # Merkle valid, but extensions key absent
+    res = verify_shard(shard, trusted_key_path=TRUSTED_KEY)
+    assert res["status"] == "FAIL"
+    assert "E_MANIFEST_SCHEMA" in {e["code"] for e in res["errors"]}, res["errors"]
+
+
+@needs_gold
+def test_ext_file_with_bare_name_rejected(tmp_path):
+    """spec 10: ext files must be '<name>@<version>.parquet'. A bare,
+    unversioned name must fail even when declared and re-signed."""
     shard = _copy_gold(tmp_path)
     (shard / "ext").mkdir()
     (shard / "ext" / "spatial.parquet").write_bytes(b"placeholder")
+    _declare_ext(shard, ["spatial"])  # also a malformed id, but naming is the point
     _resign(shard)
     res = verify_shard(shard, trusted_key_path=TRUSTED_KEY)
-    assert res["status"] == "PASS"
+    assert res["status"] == "FAIL"
+    assert "E_MANIFEST_SCHEMA" in {e["code"] for e in res["errors"]}, res["errors"]
+
+
+@needs_gold
+def test_declared_extension_without_file_rejected(tmp_path):
+    """spec 10: a manifest extension with no backing ext file must fail."""
+    shard = _copy_gold(tmp_path)
+    _declare_ext(shard, ["spatial@1"])  # no ext/ dir at all
+    _resign(shard)
+    res = verify_shard(shard, trusted_key_path=TRUSTED_KEY)
+    assert res["status"] == "FAIL"
+    assert "E_MANIFEST_SCHEMA" in {e["code"] for e in res["errors"]}, res["errors"]
 
 
 @needs_gold
@@ -242,8 +289,9 @@ def test_compiler_shard_with_ext_file_verifies(tmp_path):
     ok = compile_generic_shard(cfg)
     assert ok
 
-    # Add an extension file
-    (out / "ext" / "spatial.parquet").write_bytes(b"placeholder-spatial-data")
+    # Add an extension file (spec-10 conformant: versioned name + declared)
+    (out / "ext" / "spatial@1.parquet").write_bytes(b"placeholder-spatial-data")
+    _declare_ext(out, ["spatial@1"])
 
     # Re-sign (simulating a build step that emits extensions)
     _resign(out)

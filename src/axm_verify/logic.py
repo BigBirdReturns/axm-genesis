@@ -145,6 +145,8 @@ _RFC3339_RE = re.compile(
 )
 # Extension identifier (spec 5.3 + COMPATIBILITY: "<name>@<version>").
 _EXT_ID_RE = re.compile(r"^[a-z0-9_]+@\d+$")
+# Extension parquet filename on disk (spec 10: "ext/<name>@<version>.parquet").
+_EXT_FILE_RE = re.compile(r"^[a-z0-9_]+@\d+\.parquet$")
 
 
 def _is_str(x: Any) -> bool:
@@ -248,6 +250,57 @@ def _validate_manifest_schema(manifest: Dict[str, Any], errors: List[Dict[str, s
                 if not (_is_str(e) and _EXT_ID_RE.match(e)):
                     _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
                          f"extensions[{i}] must match '<name>@<version>' (got {e!r})")
+
+
+def _validate_extensions_consistency(
+    root: Path, manifest: Dict[str, Any], errors: List[Dict[str, str]]
+) -> None:
+    """Enforce spec 10 disk-side rules for the ext/ envelope.
+
+    The manifest-shape validator (5.3) checks that any *declared* identifiers
+    are well-formed. This closes the orthogonal gap where the manifest list and
+    the actual ext/ contents disagree:
+
+    - every ext/ file must follow the '<name>@<version>.parquet' naming
+      convention (spec 10 + COMPATIBILITY: the '@<version>' suffix is part of
+      the name);
+    - when ext/ is non-empty, manifest.extensions must list exactly the
+      identifiers present on disk;
+    - when ext/ is empty or absent, manifest.extensions must be omitted
+      (hash stability).
+
+    Until this existed, a shard could carry ext files with no extensions key,
+    or a bare unversioned filename, and still pass. Runs after the Merkle check,
+    so it only sees byte-consistent shards and never preempts E_MERKLE_MISMATCH.
+    """
+    declared = manifest.get("extensions", [])
+    if not isinstance(declared, list):
+        return  # already flagged by _validate_manifest_schema
+
+    ext_dir = root / "ext"
+    ext_files = []
+    if ext_dir.is_dir():
+        ext_files = [f for f in ext_dir.iterdir() if f.is_file() and not f.name.startswith(".")]
+
+    on_disk_ids: Set[str] = set()
+    for f in sorted(ext_files, key=lambda p: p.name):
+        if not _EXT_FILE_RE.match(f.name):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+                 f"ext/{f.name} must follow '<name>@<version>.parquet' naming")
+        else:
+            on_disk_ids.add(f.stem)
+
+    declared_set = set(declared)
+    for ident in sorted(on_disk_ids - declared_set):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+             f"ext/{ident}.parquet present but '{ident}' not in manifest.extensions")
+    for ident in sorted(declared_set - on_disk_ids):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+             f"manifest.extensions lists '{ident}' but ext/{ident}.parquet is absent")
+
+    if not ext_files and "extensions" in manifest:
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+             "manifest.extensions present but ext/ is empty or absent")
 
 
 def _validate_parquet_schema(path: Path, expected: Any, errors: List[Dict[str, str]]) -> Any | None:
@@ -511,6 +564,12 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
     stored = manifest["integrity"]["merkle_root"]
     if computed != stored:
         _err(errors, ErrorCode.E_MERKLE_MISMATCH, f"Merkle root mismatch: computed {computed}, stored {stored}")
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
+    # 3b) Extension envelope consistency (spec 10). After Merkle so it only
+    # sees byte-consistent shards and never preempts E_MERKLE_MISMATCH.
+    _validate_extensions_consistency(root, manifest, errors)
+    if errors:
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
     # 4) Schema (bounded via metadata check)
