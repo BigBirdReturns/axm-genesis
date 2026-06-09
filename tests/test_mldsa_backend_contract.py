@@ -11,6 +11,28 @@ import pytest
 MISSING_BACKEND_FRAGMENT = "No ML-DSA-44 backend installed"
 
 
+@pytest.fixture(autouse=True)
+def _restore_sign_backend():
+    """Reload axm_build.sign against the real environment after each test.
+
+    These tests importlib.reload(axm_build.sign) with a fake dilithium module
+    bound in sys.modules. reload mutates the module object in place, binding
+    the fake _mldsa44_*_raw backend functions. monkeypatch restores sys.modules
+    and builtins.__import__ on teardown, but cannot un-mutate the reloaded
+    module — so without this, the fake backend (pk=b"p"*1312, sig=b"z"*2420)
+    leaks into every later test that imports axm_build.sign, breaking wrong-key
+    rejection and making failures depend on collection order.
+
+    As an autouse fixture with no monkeypatch dependency, this finalizer is set
+    up before monkeypatch and so torn down after it — the reload runs once the
+    real import system is back, re-binding the genuine backend (or the
+    no-backend RuntimeError raisers, whichever the environment actually has).
+    """
+    yield
+    import axm_build.sign
+    importlib.reload(axm_build.sign)
+
+
 def _reload_sign_module_with_import_policy(monkeypatch, *, block_oqs: bool, block_dilithium: bool):
     """Reload axm_build.sign under controlled backend import failures."""
     real_import = builtins.__import__
