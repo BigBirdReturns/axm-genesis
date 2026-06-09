@@ -60,14 +60,16 @@ if pa is not None:
     # Enables: delta shards, incremental updates, version chains
     # Manifest also carries: "supersedes": [shard_id...] for cheap discovery
 
+    # Predecessor-oriented: rows record which prior shards THIS shard acts on.
+    # The owning shard is identified by manifest.shard_id, not repeated here
+    # (see RFC 0002 — no self-referential column).
     LINEAGE_SCHEMA = pa.schema([
-        ("shard_id", pa.string()),            # THIS shard
         ("supersedes_shard_id", pa.string()), # Shard being superseded
         ("action", pa.string()),              # supersede, amend, retract
-        ("timestamp", pa.string()),           # ISO 8601
+        ("timestamp", pa.string()),           # RFC 3339
         ("note", pa.string()),               # Optional context
     ])
-    LINEAGE_SORT_KEY = "shard_id"
+    LINEAGE_SORT_KEY = "supersedes_shard_id"
 
     # ---------------------------------------------------------------------------
     # temporal@1 — Claim validity windows
@@ -120,9 +122,9 @@ EXTENSION_REGISTRY = {
     },
     "lineage@1": {
         "file": "lineage@1.parquet",
-        "sort_key": "shard_id",
-        "description": "Shard versioning and supersession chains",
-        "stable_join": "shard_id, supersedes_shard_id",
+        "sort_key": "supersedes_shard_id",
+        "description": "Shard versioning and supersession chains (predecessor-oriented)",
+        "stable_join": "supersedes_shard_id",
         "depends_on": [],
         "manifest_hint": "supersedes: [shard_id...] for cheap discovery",
     },

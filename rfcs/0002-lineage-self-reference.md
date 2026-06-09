@@ -1,7 +1,34 @@
 # RFC 0002: Lineage Self-Reference (`lineage@1.shard_id`)
 
-**Status:** Draft — decision required (spec owner)
-**Affects:** `lineage@1` extension schema (frozen — see COMPATIBILITY.md)
+**Status:** Accepted — corrected in place (protospec). See Decision below.
+**Affects:** `lineage@1` extension schema (protospec — see COMPATIBILITY.md §6)
+
+## Decision (spec owner, accepted)
+The original draft of this RFC assumed `lineage@1` was frozen and therefore
+recommended introducing a new `lineage@2`. That premise was false. Established
+facts at decision time:
+
+- No `lineage@1` schema doc was ever published (`spec/extensions/` did not
+  exist). COMPATIBILITY.md's "stable extensions" sentence pointed at a document
+  that was never written.
+- No frozen test vector contains a lineage file; the guard test had to be
+  written from scratch because no fixture exercised lineage.
+- The gold shard carries no `ext/`. Nothing fixed, released, or externally
+  depended-upon was built on `lineage@1`. **This is still protospec.**
+
+Because `lineage@1` is editable protospec, not a compatibility commitment,
+preserving the broken shape as `lineage@2` would be ceremony. **Decision: remove
+the self-referential `shard_id` column from `lineage@1` in place, before
+freezing it. No `lineage@2` is introduced now.** Option A's direction (drop the
+self column) stands; only its versioning conclusion changed, because the facts
+did. If a future *frozen* `lineage@1` ever needs to change again, that change
+will use `lineage@2`.
+
+The paper trail starts with the spec owner reading the document and accepting it
+in their own words. The correction is also announced loudly in CHANGELOG (the
+schema changed pre-freeze, the old shape, and why), since the repositories are
+public and "no dependents" cannot be fully asserted for strangers — protospec
+earns the right to change, not to change silently.
 
 ## Summary
 The `lineage@1` extension has a `shard_id` column that tries to store the

@@ -278,28 +278,21 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
     if temporal_rows:
         _write_temporal_extension(cfg.out_dir / "ext" / "temporal@1.parquet", temporal_rows)
 
-    # Write ext/lineage@1.parquet if this shard supersedes/amends/retracts prior shards
+    # Write ext/lineage@1.parquet if this shard supersedes/amends/retracts prior shards.
+    # lineage@1 rows describe predecessor relationships only; the owning shard is
+    # identified by manifest.shard_id (no self-referential column). So lineage bytes
+    # are final before hashing — a single Merkle pass suffices, no backfill.
     if cfg.supersedes:
         _write_lineage_extension(
             cfg.out_dir / "ext" / "lineage@1.parquet",
             supersedes=list(cfg.supersedes),
             action=cfg.lineage_action,
-            created_at=cfg.created_at,
+            timestamp=cfg.created_at,
             note=cfg.lineage_note,
         )
 
     # Manifest + signatures — suite-aware
-    # If lineage is present we need a two-pass Merkle:
-    #   Pass 1: compute Merkle over __PENDING__ lineage → derive shard_id
-    #   Backfill: rewrite lineage@1.parquet with real shard_id
-    #   Pass 2: recompute Merkle over final bytes → this is the canonical root
     merkle_root = compute_merkle_root(cfg.out_dir, suite=cfg.suite)
-    if cfg.supersedes:
-        # Pass 1 root gives us the shard_id for backfill
-        pending_shard_id = f"shard_blake3_{merkle_root}"
-        backfill_lineage_shard_id(cfg.out_dir, pending_shard_id)
-        # Pass 2: recompute over the now-correct lineage bytes
-        merkle_root = compute_merkle_root(cfg.out_dir, suite=cfg.suite)
 
     # Detect active extensions (files in ext/)
     ext_dir = cfg.out_dir / "ext"
@@ -494,22 +487,26 @@ def _write_lineage_extension(
     path: Path,
     supersedes: List[str],
     action: str,
-    created_at: str,
+    timestamp: str,
     note: str = "",
 ) -> None:
-    """Write ext/lineage@1.parquet deterministically.
+    """Write ext/lineage@1.parquet deterministically, in a single pass.
 
-    One row per superseded shard. The shard_id field is filled in after
-    the manifest is written — callers pass the superseded IDs, and the
-    'THIS shard' ID is the content-addressed shard_id from the manifest.
-    We leave shard_id as a placeholder sentinel here; the caller must
-    call _backfill_lineage_shard_id() after the manifest is finalised.
+    One row per superseded shard. lineage@1 records predecessor relationships
+    only — which prior shards THIS shard acts on. The owning shard is identified
+    by manifest.shard_id; lineage rows do not repeat it. There is therefore no
+    self-referential shard_id column, no __PENDING__ sentinel, and no two-pass
+    Merkle backfill: the bytes are final before the Merkle root is computed.
+
+    (See RFC 0002. The earlier shard_id column tried to store this shard's own
+    content-addressed id, computed over bytes that included the column, which
+    could never be consistent. Corrected in place while lineage@1 was still
+    protospec.)
 
     Schema (lineage@1):
-        shard_id:            string — THIS shard (backfilled after manifest)
         supersedes_shard_id: string — the shard being superseded
         action:              string — supersede | amend | retract
-        timestamp:           string — ISO 8601
+        timestamp:           string — RFC 3339
         note:                string — optional context
     """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -518,22 +515,12 @@ def _write_lineage_extension(
     if action not in valid_actions:
         raise ValueError(f"lineage_action must be one of {valid_actions}, got {action!r}")
 
-    rows = [
-        {
-            "shard_id": "__PENDING__",   # backfilled once shard_id is known
-            "supersedes_shard_id": sid,
-            "action": action,
-            "timestamp": created_at,
-            "note": note or "",
-        }
-        for sid in sorted(set(supersedes))   # deterministic, deduplicated
-    ]
+    ordered = sorted(set(supersedes))   # deterministic, deduplicated
 
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     schema = pa.schema([
-        ("shard_id", pa.string()),
         ("supersedes_shard_id", pa.string()),
         ("action", pa.string()),
         ("timestamp", pa.string()),
@@ -541,47 +528,13 @@ def _write_lineage_extension(
     ])
 
     table = pa.table({
-        "shard_id":            pa.array([r["shard_id"] for r in rows],            type=pa.string()),
-        "supersedes_shard_id": pa.array([r["supersedes_shard_id"] for r in rows], type=pa.string()),
-        "action":              pa.array([r["action"] for r in rows],              type=pa.string()),
-        "timestamp":           pa.array([r["timestamp"] for r in rows],           type=pa.string()),
-        "note":                pa.array([r["note"] for r in rows],                type=pa.string()),
+        "supersedes_shard_id": pa.array(ordered, type=pa.string()),
+        "action":              pa.array([action] * len(ordered), type=pa.string()),
+        "timestamp":           pa.array([timestamp] * len(ordered), type=pa.string()),
+        "note":                pa.array([note or ""] * len(ordered), type=pa.string()),
     }, schema=schema)
 
     pq.write_table(table, str(path), compression="zstd")
-
-
-def backfill_lineage_shard_id(shard_dir: Path, shard_id: str) -> None:
-    """Rewrite ext/lineage@1.parquet with the now-known shard_id.
-
-    Called by compile_generic_shard after the manifest (and therefore the
-    content-addressed shard_id) has been finalised. Rewrites the file in
-    place with the __PENDING__ sentinel replaced by the real shard_id.
-    This preserves determinism: the lineage file changes content when the
-    shard_id is known, but the Merkle tree is computed AFTER this call.
-    """
-    lineage_path = shard_dir / "ext" / "lineage@1.parquet"
-    if not lineage_path.exists():
-        return
-
-    import pyarrow.parquet as pq
-    import pyarrow as pa
-
-    table = pq.read_table(str(lineage_path))
-    df = table.to_pydict()
-
-    df["shard_id"] = [shard_id] * len(df["shard_id"])
-
-    schema = pa.schema([
-        ("shard_id", pa.string()),
-        ("supersedes_shard_id", pa.string()),
-        ("action", pa.string()),
-        ("timestamp", pa.string()),
-        ("note", pa.string()),
-    ])
-
-    new_table = pa.table(df, schema=schema)
-    pq.write_table(new_table, str(lineage_path), compression="zstd")
 
 
 def _write_temporal_extension(path: Path, rows: List[Dict[str, Any]]) -> None:

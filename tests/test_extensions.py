@@ -304,20 +304,13 @@ def test_compiler_shard_with_ext_file_verifies(tmp_path):
     assert res["status"] == "PASS"
 
 
-def test_compiler_lineage_ships_without_pending_sentinel(tmp_path):
-    """A shard compiled with supersedes must ship a backfilled lineage table:
-    no __PENDING__ sentinel survives into the signed, Merkle-covered bytes.
+def test_compiler_lineage_is_predecessor_oriented(tmp_path):
+    """lineage@1 records predecessor relationships only (RFC 0002, in-place fix).
 
-    This is the guard for the ext '<name>@1' rename. The writer and the
-    two-pass backfill must agree on the lineage filename. If they drift
-    (writer -> lineage@1.parquet, backfill -> lineage.parquet), the backfill
-    silently no-ops and __PENDING__ ships inside signed bytes. Nothing in the
-    verifier reads extension *content*, so only a test like this catches it.
-
-    We read whichever lineage file the writer actually produced (glob) and
-    assert sentinel absence only — NOT that the embedded id equals the manifest
-    shard_id. That equality is the unresolved self-reference handled by the
-    lineage RFC; pinning it here would freeze the broken semantics.
+    The owning shard is identified by manifest.shard_id; lineage rows do not
+    repeat it. So the table must have NO shard_id column (hence no self-reference,
+    no __PENDING__ sentinel, no two-pass backfill) and must carry exactly the four
+    predecessor-oriented columns. The shard must still verify.
     """
     source = tmp_path / "source.txt"
     source.write_text("Tourniquets treat severe bleeding effectively.\n", encoding="utf-8")
@@ -347,12 +340,11 @@ def test_compiler_lineage_ships_without_pending_sentinel(tmp_path):
     )
     assert compile_generic_shard(cfg)
 
-    lineage_files = list((out / "ext").glob("lineage*.parquet"))
-    assert lineage_files, "compile with supersedes must write a lineage extension"
-    shard_ids = pq.read_table(str(lineage_files[0])).column("shard_id").to_pylist()
-    assert "__PENDING__" not in shard_ids, (
-        f"backfill no-op'd: __PENDING__ shipped in {lineage_files[0].name}"
-    )
+    lineage = out / "ext" / "lineage@1.parquet"
+    assert lineage.exists(), "compile with supersedes must write ext/lineage@1.parquet"
+    cols = pq.read_table(str(lineage)).column_names
+    assert "shard_id" not in cols, "lineage@1 must not carry a self-referential shard_id"
+    assert tuple(cols) == ("supersedes_shard_id", "action", "timestamp", "note"), cols
 
     res = verify_shard(out, trusted_key_path=TRUSTED_KEY)
     assert res["status"] == "PASS", res["errors"]

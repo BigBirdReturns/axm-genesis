@@ -67,7 +67,9 @@ Additional fields may be added in minor versions.
 
 ### 6. Extension table naming
 
-Extension tables follow the pattern `<name>@<version>.parquet`.  The `@<version>` suffix is part of the name.  `lineage@1.parquet`, `temporal@1.parquet`, and `references@1.parquet` are the first stable extensions.  Their schemas are defined in `spec/extensions/`.
+Extension tables follow the pattern `<name>@<version>.parquet`.  The `@<version>` suffix is part of the name.  This naming convention **is** frozen and enforced by the verifier (spec §10).
+
+The extension *schemas* (`lineage`, `temporal`, `references`) are **protospec**: not compatibility-frozen until their schema docs land in `spec/extensions/` **and** a tagged release explicitly declares them frozen.  Until then their columns may change in place.  `spec/extensions/lineage@1.md` is the first published extension schema; `temporal` and `references` remain unpublished and editable.  The frozen kernel above (spec/v1.0, Merkle constructions, suite identifiers, `claims.parquet` fields, exit codes, gold shard, committed vectors) is unaffected by this carve-out.
 
 ---
 

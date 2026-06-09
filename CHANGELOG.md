@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.3.0] - 2026-06-09
+### Changed (protospec — pre-freeze schema correction)
+- **`lineage@1` schema corrected in place (RFC 0002, accepted).** The
+  `shard_id` column was **removed**. lineage@1 is now predecessor-oriented: rows
+  record which prior shards a shard supersedes/amends/retracts, and the owning
+  shard is identified solely by `manifest.shard_id`.
+  - **Old shape (removed):** `(shard_id, supersedes_shard_id, action, timestamp, note)`,
+    where `shard_id` was meant to name *this* shard. Because the shard id is a
+    content address over bytes that included the column, it could never be
+    consistent — it required a `__PENDING__` sentinel, a backfill step, and a
+    two-pass Merkle build, and the result still did not match the manifest
+    `shard_id`.
+  - **New shape:** `(supersedes_shard_id, action, timestamp, note)`. Single
+    deterministic Merkle pass; no sentinel, no backfill.
+  - This is a **protospec** change: `lineage@1` was never published in
+    `spec/extensions/`, never carried by a test vector or the gold shard, and
+    nothing fixed or released depended on it. The pre-correction shape is not
+    preserved. No `lineage@2` is introduced.
+- Removed `backfill_lineage_shard_id()` and the two-pass lineage Merkle build
+  from `compiler_generic.py`.
+- `EXTENSION_REGISTRY["lineage@1"]`: `sort_key` and `stable_join` are now
+  `supersedes_shard_id` (predecessor-oriented).
+
+### Added
+- `spec/extensions/lineage@1.md` — the first **published** extension schema
+  (marked protospec until a freeze tag).
+- COMPATIBILITY.md §6: scoped carve-out clarifying that the extension *naming
+  convention* is frozen and verifier-enforced, while the extension *schemas*
+  (`lineage`, `temporal`, `references`) are protospec until published and frozen
+  by a tagged release. The frozen kernel is unaffected.
+
+### Backward Compatibility
+- The `<name>@<version>.parquet` naming convention and all frozen-kernel
+  guarantees are unchanged.
+- No released shard, test vector, or gold shard contained `lineage@1`, so no
+  verifiable artifact changes meaning. Verifiers that do not understand
+  extensions are unaffected (`ext/` is opaque to them).
+
+---
+
 ## [1.2.0] - 2026-02-25
 ### Added
 - **REQ 5 enforcement**: `E_BUFFER_DISCONTINUITY` added to `ErrorCode` enum in `const.py`.
