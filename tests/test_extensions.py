@@ -254,3 +254,59 @@ def test_compiler_shard_with_ext_file_verifies(tmp_path):
 
     res = verify_shard(out, trusted_key_path=trusted)
     assert res["status"] == "PASS"
+
+
+def test_compiler_lineage_ships_without_pending_sentinel(tmp_path):
+    """A shard compiled with supersedes must ship a backfilled lineage table:
+    no __PENDING__ sentinel survives into the signed, Merkle-covered bytes.
+
+    This is the guard for the ext '<name>@1' rename. The writer and the
+    two-pass backfill must agree on the lineage filename. If they drift
+    (writer -> lineage@1.parquet, backfill -> lineage.parquet), the backfill
+    silently no-ops and __PENDING__ ships inside signed bytes. Nothing in the
+    verifier reads extension *content*, so only a test like this catches it.
+
+    We read whichever lineage file the writer actually produced (glob) and
+    assert sentinel absence only — NOT that the embedded id equals the manifest
+    shard_id. That equality is the unresolved self-reference handled by the
+    lineage RFC; pinning it here would freeze the broken semantics.
+    """
+    source = tmp_path / "source.txt"
+    source.write_text("Tourniquets treat severe bleeding effectively.\n", encoding="utf-8")
+
+    candidates = tmp_path / "candidates.jsonl"
+    candidates.write_text(json.dumps({
+        "subject": "tourniquet",
+        "predicate": "treats",
+        "object": "severe bleeding",
+        "object_type": "entity",
+        "tier": 0,
+        "evidence": "Tourniquets treat severe bleeding effectively."
+    }) + "\n", encoding="utf-8")
+
+    out = tmp_path / "shard"
+    cfg = CompilerConfig(
+        source_path=source,
+        candidates_path=candidates,
+        out_dir=out,
+        private_key=CANONICAL_TEST_PRIVATE_KEY,
+        publisher_id="@test",
+        publisher_name="Test",
+        namespace="test/medical",
+        created_at="2026-01-01T00:00:00Z",
+        suite="ed25519",
+        supersedes=("shard_blake3_" + "a" * 64,),
+    )
+    assert compile_generic_shard(cfg)
+
+    lineage_files = list((out / "ext").glob("lineage*.parquet"))
+    assert lineage_files, "compile with supersedes must write a lineage extension"
+    shard_ids = pq.read_table(str(lineage_files[0])).column("shard_id").to_pylist()
+    assert "__PENDING__" not in shard_ids, (
+        f"backfill no-op'd: __PENDING__ shipped in {lineage_files[0].name}"
+    )
+
+    res = verify_shard(out, trusted_key_path=TRUSTED_KEY)
+    assert res["status"] == "PASS", res["errors"]
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert "lineage@1" in manifest.get("extensions", [])

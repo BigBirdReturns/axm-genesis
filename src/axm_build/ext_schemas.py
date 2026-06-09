@@ -104,14 +104,14 @@ if pa is not None:
 
 EXTENSION_REGISTRY = {
     "locators@1": {
-        "file": "locators.parquet",
+        "file": "locators@1.parquet",
         "sort_key": "evidence_addr",
         "description": "Structural position of evidence in source documents",
         "stable_join": "evidence_addr = hash(source_hash + byte_start + byte_end)",
         "depends_on": [],
     },
     "references@1": {
-        "file": "references.parquet",
+        "file": "references@1.parquet",
         "sort_key": "src_claim_id",
         "description": "Cross-shard claim references for composition",
         "stable_join": "src_claim_id (from claims.parquet), dst_shard_id + dst_object_id",
@@ -119,7 +119,7 @@ EXTENSION_REGISTRY = {
         "integrity_rule": "If dst_shard_id is mounted, target must exist or ref is broken",
     },
     "lineage@1": {
-        "file": "lineage.parquet",
+        "file": "lineage@1.parquet",
         "sort_key": "shard_id",
         "description": "Shard versioning and supersession chains",
         "stable_join": "shard_id, supersedes_shard_id",
@@ -127,14 +127,14 @@ EXTENSION_REGISTRY = {
         "manifest_hint": "supersedes: [shard_id...] for cheap discovery",
     },
     "temporal@1": {
-        "file": "temporal.parquet",
+        "file": "temporal@1.parquet",
         "sort_key": "claim_id",
         "description": "Claim validity windows for staleness detection",
         "stable_join": "claim_id (from claims.parquet)",
         "depends_on": [],
     },
     "coords@1": {
-        "file": "coords.parquet",
+        "file": "coords@1.parquet",
         "sort_key": "entity_id",
         "description": "Semantic coordinate space (MM-TT-SS-XXXX)",
         "stable_join": "entity_id (from entities.parquet)",

@@ -268,20 +268,20 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
 
     # Write ext/locators@1.parquet if locator data exists
     if locator_rows:
-        _write_locators_extension(cfg.out_dir / "ext" / "locators.parquet", locator_rows)
+        _write_locators_extension(cfg.out_dir / "ext" / "locators@1.parquet", locator_rows)
 
     # Write ext/references@1.parquet if cross-shard references exist
     if reference_rows:
-        _write_references_extension(cfg.out_dir / "ext" / "references.parquet", reference_rows)
+        _write_references_extension(cfg.out_dir / "ext" / "references@1.parquet", reference_rows)
 
     # Write ext/temporal@1.parquet if validity windows exist
     if temporal_rows:
-        _write_temporal_extension(cfg.out_dir / "ext" / "temporal.parquet", temporal_rows)
+        _write_temporal_extension(cfg.out_dir / "ext" / "temporal@1.parquet", temporal_rows)
 
     # Write ext/lineage@1.parquet if this shard supersedes/amends/retracts prior shards
     if cfg.supersedes:
         _write_lineage_extension(
-            cfg.out_dir / "ext" / "lineage.parquet",
+            cfg.out_dir / "ext" / "lineage@1.parquet",
             supersedes=list(cfg.supersedes),
             action=cfg.lineage_action,
             created_at=cfg.created_at,
@@ -291,7 +291,7 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
     # Manifest + signatures — suite-aware
     # If lineage is present we need a two-pass Merkle:
     #   Pass 1: compute Merkle over __PENDING__ lineage → derive shard_id
-    #   Backfill: rewrite lineage.parquet with real shard_id
+    #   Backfill: rewrite lineage@1.parquet with real shard_id
     #   Pass 2: recompute Merkle over final bytes → this is the canonical root
     merkle_root = compute_merkle_root(cfg.out_dir, suite=cfg.suite)
     if cfg.supersedes:
@@ -307,8 +307,10 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
     if ext_dir.exists():
         for f in sorted(ext_dir.iterdir()):
             if f.is_file() and not f.name.startswith("."):
-                stem = f.stem
-                active_extensions.append(f"{stem}@1")
+                # Filenames now carry the version: "<name>@<version>.parquet".
+                # The stem ("<name>@<version>") IS the extension identifier —
+                # do not re-append "@1" (that produced the "locators@1@1" bug).
+                active_extensions.append(f.stem)
 
     manifest = {
         "spec_version": "1.0.0",
@@ -558,7 +560,7 @@ def backfill_lineage_shard_id(shard_dir: Path, shard_id: str) -> None:
     This preserves determinism: the lineage file changes content when the
     shard_id is known, but the Merkle tree is computed AFTER this call.
     """
-    lineage_path = shard_dir / "ext" / "lineage.parquet"
+    lineage_path = shard_dir / "ext" / "lineage@1.parquet"
     if not lineage_path.exists():
         return
 
