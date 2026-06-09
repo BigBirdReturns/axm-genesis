@@ -13,6 +13,7 @@ fixture.
 """
 from __future__ import annotations
 
+import json
 import shutil
 import struct
 from pathlib import Path
@@ -239,6 +240,88 @@ def test_req5_continuous_stream_passes_continuity_check(gold: Path) -> None:
     assert ErrorCode.E_BUFFER_DISCONTINUITY not in codes, (
         "A continuous stream must not trigger E_BUFFER_DISCONTINUITY"
     )
+
+
+# ── REQ 1 (cont.): Manifest schema 5.2 / 5.3 enforcement ──────────────────────
+#
+# These exercise E_MANIFEST_SCHEMA directly. Schema validation runs before
+# signature verification, so each mutation fails on the schema check itself
+# (the broken signature is never reached). Before this enforcement existed the
+# verifier checked only integrity.merkle_root, so every drift below passed
+# silently.
+
+def _load_manifest(gold: Path) -> dict:
+    return json.loads((gold / "manifest.json").read_text())
+
+
+def _write_manifest(gold: Path, manifest: dict) -> None:
+    (gold / "manifest.json").write_text(json.dumps(manifest))
+
+
+def test_manifest_created_at_at_top_level_rejected(gold: Path) -> None:
+    """spec 5.2 freezes created_at at metadata.created_at. The historical
+    compiler_generic bug put it at the manifest top level — reject it."""
+    m = _load_manifest(gold)
+    m["created_at"] = m["metadata"].pop("created_at")
+    _write_manifest(gold, m)
+
+    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
+    codes = {e["code"] for e in result["errors"]}
+    assert ErrorCode.E_MANIFEST_SCHEMA in codes, codes
+
+
+def test_manifest_missing_created_at_rejected(gold: Path) -> None:
+    m = _load_manifest(gold)
+    del m["metadata"]["created_at"]
+    _write_manifest(gold, m)
+
+    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
+    codes = {e["code"] for e in result["errors"]}
+    assert ErrorCode.E_MANIFEST_SCHEMA in codes, codes
+
+
+def test_manifest_wrong_spec_version_rejected(gold: Path) -> None:
+    """spec 5.2: spec_version must equal "1.0.0"."""
+    m = _load_manifest(gold)
+    m["spec_version"] = "1.1.0"
+    _write_manifest(gold, m)
+
+    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
+    codes = {e["code"] for e in result["errors"]}
+    assert ErrorCode.E_MANIFEST_SCHEMA in codes, codes
+
+
+def test_manifest_bad_integrity_algorithm_rejected(gold: Path) -> None:
+    m = _load_manifest(gold)
+    m["integrity"]["algorithm"] = "sha256"
+    _write_manifest(gold, m)
+
+    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
+    codes = {e["code"] for e in result["errors"]}
+    assert ErrorCode.E_MANIFEST_SCHEMA in codes, codes
+
+
+def test_manifest_non_integer_statistics_rejected(gold: Path) -> None:
+    m = _load_manifest(gold)
+    m["statistics"]["entities"] = "8"  # string, not int
+    _write_manifest(gold, m)
+
+    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
+    codes = {e["code"] for e in result["errors"]}
+    assert ErrorCode.E_MANIFEST_SCHEMA in codes, codes
+
+
+def test_manifest_malformed_extension_identifier_rejected(gold: Path) -> None:
+    """spec 5.3 + COMPATIBILITY: extension ids are '<name>@<version>'. A bare
+    name (the shape the '@1@1' rename trap would produce) must be rejected."""
+    for bad in ("locators", "locators@1@1", "Locators@1"):
+        m = _load_manifest(gold)
+        m["extensions"] = [bad]
+        _write_manifest(gold, m)
+
+        result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
+        codes = {e["code"] for e in result["errors"]}
+        assert ErrorCode.E_MANIFEST_SCHEMA in codes, (bad, codes)
 
 
 # ── Cross-cutting: determinism ────────────────────────────────────────────────

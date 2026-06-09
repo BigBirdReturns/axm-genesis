@@ -314,8 +314,11 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
         "spec_version": "1.0.0",
         "suite": cfg.suite,
         "shard_id": f"shard_blake3_{merkle_root}",
-        "created_at": cfg.created_at,
-        "metadata": {"title": cfg.source_path.name, "namespace": cfg.namespace},
+        "metadata": {
+            "title": cfg.source_path.name,
+            "namespace": cfg.namespace,
+            "created_at": cfg.created_at,
+        },
         "publisher": {"id": cfg.publisher_id, "name": cfg.publisher_name},
         "license": {"spdx": "UNLICENSED", "notes": "Generic build"},
         "sources": [{"path": "content/source.txt", "hash": source_hash}],

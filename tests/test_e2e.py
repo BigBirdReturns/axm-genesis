@@ -135,7 +135,7 @@ try:
         )
 
         assert manifest["suite"] == "axm-blake3-mldsa44"
-        assert manifest["spec_version"] == "1.1.0"
+        assert manifest["spec_version"] == "1.0.0"
 
         result = verify_shard(outdir, trusted_key_path=pk_path)
         assert result["status"] == "PASS", f"PQ verification failed: {result['errors']}"

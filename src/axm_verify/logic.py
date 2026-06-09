@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import struct as _struct
 from pathlib import Path
 from typing import Any, Dict, List, Set
@@ -135,6 +136,118 @@ def _read_manifest(manifest_bytes: bytes, errors: List[Dict[str, str]]) -> Dict[
         return {}
 
     return data
+
+
+# RFC 3339 timestamp (spec 5.2: metadata.created_at). Lenient on fractional
+# seconds and offset form; strict on the date-time skeleton.
+_RFC3339_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$"
+)
+# Extension identifier (spec 5.3 + COMPATIBILITY: "<name>@<version>").
+_EXT_ID_RE = re.compile(r"^[a-z0-9_]+@\d+$")
+
+
+def _is_str(x: Any) -> bool:
+    return isinstance(x, str)
+
+
+def _is_int(x: Any) -> bool:
+    # JSON booleans are ints in Python; spec 5.2 means true integers.
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _validate_manifest_schema(manifest: Dict[str, Any], errors: List[Dict[str, str]]) -> None:
+    """Enforce spec 5.2 required fields and 5.3 optional-field shape.
+
+    integrity.merkle_root is already validated in _read_manifest. This runs
+    before signature verification, so a structurally invalid manifest fails
+    with E_MANIFEST_SCHEMA independently of crypto. Until this existed the
+    error code was decorative — the verifier checked only merkle_root, so
+    field drift (top-level created_at, wrong spec_version, malformed
+    extensions) passed silently.
+    """
+    m = manifest
+
+    # spec_version: string, must equal "1.0.0"
+    sv = m.get("spec_version")
+    if not (_is_str(sv) and sv == "1.0.0"):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+             f'spec_version must equal "1.0.0" (got {sv!r})')
+
+    # shard_id: string
+    if not _is_str(m.get("shard_id")):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "shard_id must be a string")
+
+    # metadata.{title, namespace, created_at}
+    md = m.get("metadata")
+    if not isinstance(md, dict):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "metadata must be an object")
+    else:
+        if not _is_str(md.get("title")):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "metadata.title must be a string")
+        if not _is_str(md.get("namespace")):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "metadata.namespace must be a string")
+        ca = md.get("created_at")
+        if not _is_str(ca):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "metadata.created_at must be a string")
+        elif not _RFC3339_RE.match(ca):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+                 f"metadata.created_at must be an RFC 3339 timestamp (got {ca!r})")
+
+    # publisher.{id, name}
+    pub = m.get("publisher")
+    if not isinstance(pub, dict):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "publisher must be an object")
+    else:
+        if not _is_str(pub.get("id")):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "publisher.id must be a string")
+        if not _is_str(pub.get("name")):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "publisher.name must be a string")
+
+    # license.spdx
+    lic = m.get("license")
+    if not isinstance(lic, dict):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "license must be an object")
+    elif not _is_str(lic.get("spdx")):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "license.spdx must be a string")
+
+    # sources: non-empty array of {path, hash}
+    src = m.get("sources")
+    if not isinstance(src, list) or not src:
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "sources must be a non-empty array")
+    else:
+        for i, s in enumerate(src):
+            if not isinstance(s, dict) or not _is_str(s.get("path")) or not _is_str(s.get("hash")):
+                _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+                     f"sources[{i}] must have string path and hash")
+
+    # integrity.algorithm == "blake3" (merkle_root already checked upstream)
+    integ = m.get("integrity", {})
+    if isinstance(integ, dict) and integ.get("algorithm") != "blake3":
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+             f'integrity.algorithm must equal "blake3" (got {integ.get("algorithm")!r})')
+
+    # statistics.{entities, claims}: integers
+    stats = m.get("statistics")
+    if not isinstance(stats, dict):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "statistics must be an object")
+    else:
+        if not _is_int(stats.get("entities")):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "statistics.entities must be an integer")
+        if not _is_int(stats.get("claims")):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "statistics.claims must be an integer")
+
+    # 5.3 optional: extensions, when present, must be well-formed identifiers.
+    # (suite is validated against known suites downstream.)
+    if "extensions" in m:
+        ext = m["extensions"]
+        if not isinstance(ext, list):
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "extensions must be an array")
+        else:
+            for i, e in enumerate(ext):
+                if not (_is_str(e) and _EXT_ID_RE.match(e)):
+                    _err(errors, ErrorCode.E_MANIFEST_SCHEMA,
+                         f"extensions[{i}] must match '<name>@<version>' (got {e!r})")
 
 
 def _validate_parquet_schema(path: Path, expected: Any, errors: List[Dict[str, str]]) -> Any | None:
@@ -331,6 +444,12 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 
     manifest = _read_manifest(manifest_bytes, errors)
+    if errors:
+        return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
+
+    # Full spec 5.2 / 5.3 schema enforcement. Runs before crypto so a
+    # structurally invalid manifest fails fast with E_MANIFEST_SCHEMA.
+    _validate_manifest_schema(manifest, errors)
     if errors:
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 

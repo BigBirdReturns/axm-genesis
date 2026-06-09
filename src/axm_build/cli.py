@@ -393,7 +393,7 @@ def _compile_from_candidates(
     # Manifest
     sources = [{"path": f"content/{name}", "hash": h} for name, h in sorted(content_hashes.items())]
     manifest: Dict[str, Any] = {
-        "spec_version": "1.1.0",
+        "spec_version": "1.0.0",
         "suite": suite,
         "shard_id": f"shard_blake3_{merkle_root}",
         "metadata": {
@@ -405,6 +405,7 @@ def _compile_from_candidates(
             "name": "AXM Genesis Builder",
             "id": "@axm_builder",
         },
+        "license": {"spdx": "UNLICENSED"},
         "sources": sources,
         "integrity": {
             "algorithm": "blake3",
