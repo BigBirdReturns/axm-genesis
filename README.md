@@ -42,6 +42,30 @@ python -m pytest tests/ -v
 python -m pytest tests/test_conformance.py -v
 ```
 
+## Post-Quantum Backend Install
+
+ML-DSA-44 support is optional and uses backend preference ordering:
+
+1. `liboqs-python` (preferred production C bindings)
+2. `dilithium-py` (pure-Python compatibility fallback)
+
+```bash
+# Preferred ML-DSA backend (requires system liboqs shared library)
+pip install -e ".[pq]"
+
+# Compatibility fallback backend
+pip install -e ".[pq-compat]"
+```
+
+If neither backend is available, ML-DSA-44 sign/verify calls raise `RuntimeError`
+with installation guidance.
+
+### Migration note (v1.2+ PQ extras)
+
+- `.[pq]` now targets the preferred `liboqs-python` backend.
+- `.[pq-compat]` provides `dilithium-py` compatibility fallback.
+- Existing scripts pinned to old `dilithium-py`-only extras should be updated.
+
 ## Cryptographic Suites
 
 | Suite | Algorithm | Key Size | Sig Size | Default |
@@ -50,6 +74,13 @@ python -m pytest tests/test_conformance.py -v
 | `axm-blake3-mldsa44` | ML-DSA-44 (FIPS 204) | 1312 B | 2420 B | v1.1.0+ |
 
 Both suites use Blake3 and SHA-256 content hashing. Merkle construction differs by suite (see Specification Sections 4.1 and 4.2). Ed25519 shards remain valid indefinitely.
+
+For ML-DSA-44 compilation, `private_key` must be one of:
+
+- `sk||pk` concatenated blob: `2528 + 1312 = 3840` bytes
+- `sk` only: `2528` bytes, with matching `sig/publisher.pub` (`1312` bytes) pre-placed
+
+Any other key length is rejected with a `ValueError`.
 
 ## The Gold Shard
 
@@ -105,6 +136,15 @@ All error codes are prefixed `E_` and defined in `axm_verify/const.py`. The full
 | `E_REF_SOURCE` | Span/provenance points to non-existent file or OOB byte range |
 | `E_REF_READ` | Content file unreadable during span verification |
 | `E_BUFFER_DISCONTINUITY` | Frame gap in `cam_latents.bin` |
+
+## Troubleshooting
+
+| Symptom | Meaning | Action |
+|---------|---------|--------|
+| `No ML-DSA-44 backend installed` | No PQ backend import succeeded | Install `.[pq]` (preferred) or `.[pq-compat]` |
+| `private_key length ... is not valid for suite 'axm-blake3-mldsa44'` | ML-DSA key blob size is malformed | Pass `sk||pk` (3840 bytes), or `sk` (2528) + pre-placed `sig/publisher.pub` |
+| `E_SIG_INVALID` | Signature mismatch / wrong key / wrong size | Verify trusted key, suite, pubkey bytes, and signature bytes |
+| `E_MERKLE_MISMATCH` | Content tampering or corruption detected | Rebuild/re-sign shard from source; inspect modified files under shard root |
 
 ## Documentation
 
