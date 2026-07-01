@@ -4,6 +4,8 @@
 
 AXM Genesis is the specification and toolchain for creating signed, verifiable knowledge shards. It is the immutable foundation of the AXM ecosystem — every spoke, every hub, every runtime depends on it. Nothing changes here without a frozen-spec RFC.
 
+See the [AXM Genesis Kernel Paper (v0.6)](docs/axm_genesis_kernel_paper_v0_6.pdf) for the full design rationale.
+
 ## What's in a Shard
 
 ```
@@ -148,8 +150,10 @@ All error codes are prefixed `E_` and defined in `axm_verify/const.py`. The full
 
 ## Documentation
 
+- [AXM Genesis Kernel Paper (v0.6)](docs/axm_genesis_kernel_paper_v0_6.pdf) — the design paper behind this repo
 - [Specification](spec/v1.0/SPECIFICATION.md) — frozen protocol
 - [Conformance](spec/v1.0/CONFORMANCE.md) — minimum requirements for valid shards
+- [Three-Layer Architecture](docs/THREE_LAYERS.md) — Knowledge / Journal / Hot Buffer
 - [Stream Format](STREAM_FORMAT.md) — binary hot stream format (`AXLF`/`AXLR`/`AXRR`)
 - [Changelog](CHANGELOG.md) — release history
 - [Contributing](CONTRIBUTING.md) — RFC process for spec changes
