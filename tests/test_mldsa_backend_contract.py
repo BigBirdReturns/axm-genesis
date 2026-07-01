@@ -10,6 +10,44 @@ import pytest
 
 MISSING_BACKEND_FRAGMENT = "No ML-DSA-44 backend installed"
 
+_BACKEND_MODULE_NAMES = ("oqs", "dilithium_py.dilithium")
+_MISSING = object()
+
+
+@pytest.fixture(autouse=True)
+def _restore_mldsa_backend_reality():
+    """Undo backend-import pollution after every test in this module.
+
+    Several tests here reload ``axm_build.sign`` under a gated
+    ``builtins.__import__`` and/or a fake ``dilithium_py.dilithium`` in
+    ``sys.modules``. pytest's ``monkeypatch`` restores the import hook and
+    ``sys.modules`` entries, but the *reloaded module state* of
+    ``axm_build.sign`` would otherwise stay bound to the fake backend and
+    poison every ML-DSA test that runs later in the session.
+
+    This fixture snapshots reality before the test and, after it, restores
+    ``builtins.__import__`` and the backend ``sys.modules`` entries
+    explicitly (regardless of monkeypatch teardown order), then reloads
+    ``axm_build.sign`` (and defensively ``axm_verify.crypto``, which selects
+    its backend at import time too) so their module-level backend bindings
+    are re-resolved against the real environment.
+    """
+    real_import = builtins.__import__
+    saved_modules = {name: sys.modules.get(name, _MISSING) for name in _BACKEND_MODULE_NAMES}
+    try:
+        yield
+    finally:
+        builtins.__import__ = real_import
+        for name, mod in saved_modules.items():
+            if mod is _MISSING:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = mod
+        import axm_build.sign as _sign_mod
+        importlib.reload(_sign_mod)
+        import axm_verify.crypto as _crypto_mod
+        importlib.reload(_crypto_mod)
+
 
 def _reload_sign_module_with_import_policy(monkeypatch, *, block_oqs: bool, block_dilithium: bool):
     """Reload axm_build.sign under controlled backend import failures."""
