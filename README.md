@@ -151,6 +151,7 @@ All error codes are prefixed `E_` and defined in `axm_verify/const.py`. The full
 - [Specification](spec/v1.0/SPECIFICATION.md) — frozen protocol
 - [Conformance](spec/v1.0/CONFORMANCE.md) — minimum requirements for valid shards
 - [Stream Format](STREAM_FORMAT.md) — binary hot stream format (`AXLF`/`AXLR`/`AXRR`)
+- [Paper: A Frozen Cryptographic Kernel for Verified Knowledge Reconstruction](papers/axm-genesis-frozen-cryptographic-kernel-v0.6.pdf) (draft v0.6) — design rationale, VRA definition, and proof-by-construction comparison against RAG. See [`papers/`](papers/) for all papers. Explanatory, not normative.
 - [Changelog](CHANGELOG.md) — release history
 - [Contributing](CONTRIBUTING.md) — RFC process for spec changes
 
