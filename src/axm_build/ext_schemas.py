@@ -99,6 +99,24 @@ STREAMS_SCHEMA = {
 STREAMS_SORT_KEY = ("stream", "frame_id", "offset")
 
 # ---------------------------------------------------------------------------
+# attestations@1 — timestamp anchors over other shards (RFC 0005)
+# ---------------------------------------------------------------------------
+# One row per proof artifact carried in content/. target_shard_id names the
+# ANCHORED shard (never the containing one). anchored_at is the
+# authority-asserted time and is advisory — the raw proof at proof_path is
+# authoritative.
+
+ATTESTATIONS_SCHEMA = {
+    "target_shard_id": "string",  # sh1_ id of the anchored shard
+    "kind": "string",             # rfc3161 | opentimestamps
+    "authority": "string",        # TSA URL / calendar identifier
+    "digest_sha256": "string",    # SHA-256 hex of the target manifest bytes
+    "anchored_at": "string",      # RFC 3339 UTC, authority-asserted (advisory)
+    "proof_path": "string",       # e.g. "content/manifest.tsr"
+}
+ATTESTATIONS_SORT_KEY = ("target_shard_id", "kind", "proof_path")
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 # "unique": True when the sort key is a primary key (a duplicate sort key
@@ -141,5 +159,12 @@ EXTENSION_REGISTRY = {
         "sort_key": STREAMS_SORT_KEY,
         "unique": True,
         "description": "Embodied binary stream evidence (profile embodied@1 §7)",
+    },
+    "attestations@1": {
+        "file": "attestations@1.jsonl",
+        "schema": ATTESTATIONS_SCHEMA,
+        "sort_key": ATTESTATIONS_SORT_KEY,
+        "unique": True,
+        "description": "Timestamp anchors over other shards (RFC 0005)",
     },
 }

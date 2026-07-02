@@ -214,3 +214,67 @@ def test_registry_entries_all_declare_uniqueness():
     for ext_id, reg in EXTENSION_REGISTRY.items():
         assert isinstance(reg["unique"], bool), ext_id
         assert reg["file"] == ext_id + ".jsonl"
+
+
+def test_attestation_shard_roundtrip(tmp_path, ci_secret_key):
+    """RFC 0005: an attestation shard is an ordinary v1 shard — proof bytes
+    in content/, one attestations@1 row, a references@1 citation."""
+    target_id = "sh1_" + "ab" * 32
+    proof = tmp_path / "manifest.tsr"
+    proof.write_bytes(b"\x30\x03fake-proof")
+    manifest_copy = tmp_path / "target-manifest.json"
+    manifest_copy.write_bytes(b'{"fake":"manifest"}')
+
+    source = tmp_path / "source.txt"
+    source.write_text(
+        "ATTESTATION RECORD\n"
+        f"target: {target_id}\n"
+        "kind: rfc3161 authority: https://tsa.example gen_time: 2026-07-02T22:56:49Z\n",
+        encoding="utf-8",
+    )
+    candidates = tmp_path / "candidates.jsonl"
+    candidates.write_text(json.dumps({
+        "subject": f"anchor/{target_id}",
+        "predicate": "target_shard_id",
+        "object": target_id,
+        "object_type": "literal:string",
+        "tier": 1,
+        "evidence": f"target: {target_id}",
+        "references": [{
+            "dst_shard_id": target_id,
+            "relation_type": "cites",
+            "dst_object_type": "shard",
+        }],
+    }) + "\n", encoding="utf-8")
+
+    cfg = CompilerConfig(
+        source_path=source,
+        candidates_path=candidates,
+        out_dir=tmp_path / "shard",
+        private_key=ci_secret_key,
+        publisher_id="@ci_test",
+        publisher_name="CI Test Publisher",
+        namespace="test/attestation",
+        created_at="2026-07-02T00:00:00Z",
+        extra_content=(
+            ("target-manifest.json", manifest_copy),
+            ("manifest.tsr", proof),
+        ),
+        extra_ext={"attestations@1": [{
+            "target_shard_id": target_id,
+            "kind": "rfc3161",
+            "authority": "https://tsa.example",
+            "digest_sha256": "0" * 64,
+            "anchored_at": "2026-07-02T22:56:49Z",
+            "proof_path": "content/manifest.tsr",
+        }]},
+    )
+    assert compile_generic_shard(cfg)
+
+    shard = cfg.out_dir
+    manifest = json.loads((shard / "manifest.json").read_bytes())
+    assert set(manifest["extensions"]) == {"attestations@1", "references@1"}
+    assert (shard / "ext" / "attestations@1.jsonl").stat().st_size > 0
+
+    result = verify_shard(shard, trusted_key_path=shard / "sig" / "publisher.pub")
+    assert result["status"] == "PASS", result["errors"]
