@@ -32,19 +32,14 @@ openssl ts -verify \
   -untrusted attestations/freetsa-tsa.crt
 ```
 
-### OpenTimestamps — submitted 2026-07-02, pending Bitcoin anchor
+### OpenTimestamps — anchored in Bitcoin
 
-- `gold-manifest.json.ots` — proof submitted to three public calendars
-  (b.pool.opentimestamps.org, a.pool.eternitywall.com,
-  ots.btc.catallaxy.com)
-
-The proof is *pending* until the calendars anchor into a Bitcoin block
-(typically within hours). Upgrade it to a self-contained proof and commit
-the result:
+- `gold-manifest.json.ots` — **upgraded 2026-07-02 (UTC)**: the proof is
+  now a self-contained Bitcoin attestation (block header attestations at
+  heights 956302 and 956349). Verify against any Bitcoin node:
 
 ```
-ots upgrade attestations/gold-manifest.json.ots
-ots verify  attestations/gold-manifest.json.ots
+ots verify -f attestations/gold-manifest.json attestations/gold-manifest.json.ots
 ```
 
 ### Software Heritage — save requests accepted 2026-07-02
@@ -57,6 +52,31 @@ Archival of all three repositories was requested and accepted:
 
 SWH re-archives on request; re-trigger after significant merges
 (`curl -X POST https://archive.softwareheritage.org/api/1/origin/save/git/url/<repo-url>/`).
+
+## Gold shard v2 (provisional) — anchored 2026-07-02 (UTC)
+
+`gold-v2-manifest.json` is a byte-identical copy of
+`shards/gold/fm21-11-hemorrhage-v2/manifest.json` (the provisional,
+pre-ceremony sealing). Anchoring it now means even the provisional
+artifact has an independent existence date; the ceremony re-mint
+(RELEASE.md steps 1–3) repeats this for the final manifest.
+
+- `gold-v2-manifest.tsq` / `gold-v2-manifest.tsr` — RFC 3161 timestamp
+  from freetsa.org, verified against the vendored chain:
+
+```
+openssl ts -verify \
+  -queryfile attestations/gold-v2-manifest.tsq \
+  -in attestations/gold-v2-manifest.tsr \
+  -CAfile attestations/freetsa-cacert.pem \
+  -untrusted attestations/freetsa-tsa.crt
+```
+
+- `gold-v2-manifest.json.ots` — OpenTimestamps proof, submitted to the
+  public calendars (upgrade with `ots upgrade` once anchored).
+
+Software Heritage archival was re-requested and accepted for all three
+repositories after the v1 merge (2026-07-02 UTC).
 
 ## Still open (requires account credentials)
 
