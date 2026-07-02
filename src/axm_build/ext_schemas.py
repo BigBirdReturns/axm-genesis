@@ -79,32 +79,67 @@ TEMPORAL_SCHEMA = {
 TEMPORAL_SORT_KEY = "claim_id"
 
 # ---------------------------------------------------------------------------
+# streams@1 — embodied binary stream evidence
+# ---------------------------------------------------------------------------
+# Defined by spec/profiles/embodied@1.md section 7 (informative there,
+# binding here for the reference compiler). One row per stream record
+# indexed by an embodied judge (StrictJudge or equivalent). Rows sort by
+# the composite key (stream, frame_id, offset); integer components sort
+# numerically.
+
+STREAMS_SCHEMA = {
+    "frame_id": "integer",        # frame index
+    "stream": "string",           # "latents" or "residuals"
+    "file": "string",             # "cam_latents.bin" or "cam_residuals.bin"
+    "offset": "integer",          # byte offset of the record in the file
+    "length": "integer",          # total record length (header + payload)
+    "status": "string",           # "VERIFIED" or a failure reason
+    "content_hash": "string",     # SHA-256 hex of the payload bytes
+}
+STREAMS_SORT_KEY = ("stream", "frame_id", "offset")
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
+# "unique": True when the sort key is a primary key (a duplicate sort key
+# is an error); False when it is merely an ordering key (rows tie-break on
+# their full canonical encoding and only fully identical rows are
+# rejected).
 
 EXTENSION_REGISTRY = {
     "locators@1": {
         "file": "locators@1.jsonl",
         "schema": LOCATORS_SCHEMA,
         "sort_key": LOCATORS_SORT_KEY,
+        "unique": False,
         "description": "Structural position of evidence in source documents",
     },
     "references@1": {
         "file": "references@1.jsonl",
         "schema": REFERENCES_SCHEMA,
         "sort_key": REFERENCES_SORT_KEY,
+        "unique": False,
         "description": "Cross-shard claim references for composition",
     },
     "lineage@1": {
         "file": "lineage@1.jsonl",
         "schema": LINEAGE_SCHEMA,
         "sort_key": LINEAGE_SORT_KEY,
+        "unique": True,
         "description": "Predecessor supersession rows (no self-id column)",
     },
     "temporal@1": {
         "file": "temporal@1.jsonl",
         "schema": TEMPORAL_SCHEMA,
         "sort_key": TEMPORAL_SORT_KEY,
+        "unique": True,
         "description": "Claim validity windows for staleness detection",
+    },
+    "streams@1": {
+        "file": "streams@1.jsonl",
+        "schema": STREAMS_SCHEMA,
+        "sort_key": STREAMS_SORT_KEY,
+        "unique": True,
+        "description": "Embodied binary stream evidence (profile embodied@1 §7)",
     },
 }

@@ -10,11 +10,12 @@ import base64
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from axm_verify.const import CREATED_AT_RE, SHARD_ID_RE, SPEC_VERSION, SUITE_HYBRID1
 from axm_verify.identity import (
@@ -56,6 +57,14 @@ class CompilerConfig:
     supersedes: Tuple[str, ...] = ()  # predecessor shard ids, sh1_ form
     lineage_action: str = "supersede"  # supersede | amend | retract
     lineage_note: str = ""
+    # Additional content files, e.g. an embodied spoke's binary sensor
+    # streams: (relative path under content/, source file). Copied verbatim,
+    # listed in the manifest sources bijection, sealed as Merkle leaves.
+    extra_content: Tuple[Tuple[str, Path], ...] = ()
+    # Spoke-supplied extension tables: {extension id -> rows}. The id must
+    # be in EXTENSION_REGISTRY and must not be one the kernel compiler
+    # derives itself from candidates (locators/references/temporal/lineage).
+    extra_ext: Optional[Mapping[str, Sequence[Dict[str, Any]]]] = None
 
 
 def _evidence_addr(source_hash: str, byte_start: int, byte_end: int) -> str:
@@ -113,6 +122,54 @@ def _guard_out_dir_wipe(out_dir: Path) -> None:
         )
 
 
+# Extension tables the kernel compiler derives from candidates itself; a
+# spoke may not also supply them via extra_ext (the two sources would race).
+_KERNEL_EXT_IDS = ("locators@1", "references@1", "temporal@1", "lineage@1")
+
+_CONTENT_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _validate_extra_content(extra: Tuple[Tuple[str, Path], ...]) -> None:
+    """Reject unsafe or colliding extra-content names before any byte is written."""
+    seen: set[str] = set()
+    for name, src in extra:
+        if name == "source.txt":
+            raise ValueError("extra_content may not shadow content/source.txt")
+        if name in seen:
+            raise ValueError(f"duplicate extra_content name: {name!r}")
+        seen.add(name)
+        segments = name.split("/")
+        if not segments or any(not _CONTENT_SEGMENT_RE.match(s) for s in segments):
+            raise ValueError(
+                f"extra_content name must be a safe POSIX relative path "
+                f"(segments of [A-Za-z0-9._-], not starting with '.'): {name!r}"
+            )
+        if not Path(src).is_file():
+            raise FileNotFoundError(f"extra_content source not found: {src}")
+
+
+def _validate_extra_ext(extra_ext: Mapping[str, Sequence[Dict[str, Any]]]) -> None:
+    for ext_id in extra_ext:
+        if ext_id in _KERNEL_EXT_IDS:
+            raise ValueError(
+                f"extra_ext may not supply {ext_id!r}: the kernel compiler "
+                f"derives that table from candidates"
+            )
+        if ext_id not in EXTENSION_REGISTRY:
+            raise ValueError(
+                f"unknown extension id {ext_id!r}; registered ids: "
+                f"{sorted(EXTENSION_REGISTRY)}"
+            )
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _dedup_by_pk(rows: List[Dict[str, Any]], pk: str) -> List[Dict[str, Any]]:
     """Drop exact-duplicate rows; refuse two different rows with one PK."""
     seen: Dict[str, Dict[str, Any]] = {}
@@ -154,6 +211,9 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
             raise ValueError(f"supersedes id is not in sh1_ form: {sid!r}")
     if cfg.lineage_action not in {"supersede", "amend", "retract"}:
         raise ValueError(f"lineage_action must be supersede|amend|retract, got {cfg.lineage_action!r}")
+    _validate_extra_content(cfg.extra_content)
+    if cfg.extra_ext:
+        _validate_extra_ext(cfg.extra_ext)
 
     raw_text = cfg.source_path.read_text(encoding="utf-8", errors="strict")
     norm_text = normalize_source_text(raw_text)
@@ -169,6 +229,16 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
     for d in ("content", "graph", "evidence", "sig"):
         (cfg.out_dir / d).mkdir(parents=True, exist_ok=True)
     (cfg.out_dir / "content" / "source.txt").write_bytes(content_bytes)
+
+    # Extra content files (binary streams etc.): copied verbatim, hashed for
+    # the sources bijection, sealed as ordinary Merkle leaves.
+    sources = [{"path": "content/source.txt", "hash": source_hash}]
+    for name, src in cfg.extra_content:
+        dest = cfg.out_dir / "content" / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        sources.append({"path": f"content/{name}", "hash": _sha256_file(dest)})
+    sources.sort(key=lambda s: s["path"])
 
     # Load candidates
     candidates: List[Dict[str, Any]] = []
@@ -331,19 +401,22 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
         for sid in sorted(set(cfg.supersedes))
     ]
 
-    ext_tables = {
+    ext_tables: Dict[str, List[Dict[str, Any]]] = {
         "locators@1": _dedup_rows(locator_rows),
         "references@1": _dedup_rows(reference_rows),
         "temporal@1": _dedup_by_pk(temporal_rows, "claim_id"),
         "lineage@1": lineage_rows,
     }
+    if cfg.extra_ext:
+        for ext_id, rows in cfg.extra_ext.items():
+            ext_tables[ext_id] = list(rows)
     active_extensions: List[str] = []
     for ext_id, rows in ext_tables.items():
         if not rows:
             continue
         reg = EXTENSION_REGISTRY[ext_id]
         write_table(cfg.out_dir / "ext" / reg["file"], rows, reg["schema"],
-                    reg["sort_key"], unique=ext_id in ("temporal@1", "lineage@1"))
+                    reg["sort_key"], unique=reg["unique"])
         active_extensions.append(ext_id)
 
     # Single Merkle pass (lineage never needs backfill)
@@ -359,7 +432,7 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
         },
         "publisher": {"id": cfg.publisher_id, "name": cfg.publisher_name},
         "license": {"spdx": cfg.license_spdx},
-        "sources": [{"path": "content/source.txt", "hash": source_hash}],
+        "sources": sources,
         "integrity": {"algorithm": "blake3", "merkle_root": merkle_root},
         "statistics": {"entities": len(ent_rows), "claims": len(claim_rows)},
     }
