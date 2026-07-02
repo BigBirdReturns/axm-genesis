@@ -1,0 +1,44 @@
+# axm-fleet — fleet sustainment record spoke.
+#
+# Lives in the kernel repository as the worked sustainment demo
+# (spokes/axm-fleet). Lift it out into its own repository with a plain
+# `cp -r` when it grows a life of its own — nothing here depends on the
+# in-repo location except the tests' sys.path fallback.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axm-fleet"
+version = "0.1.0"
+description = "Fleet sustainment record spoke: compiles node_record.json into genesis-verifiable shards with supersedes lineage"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = [
+  # The kernel — the only package allowed to compile and sign shards.
+  "axm-genesis[mldsa-compat]>=1.0.0rc1,<2",
+  "click>=8.0.0",
+  "blake3>=0.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+]
+
+[project.entry-points."axm.spokes"]
+fleet = "axm_fleet.cli:fleet_group"
+
+[project.scripts]
+axm-fleet = "axm_fleet.cli:fleet_group"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

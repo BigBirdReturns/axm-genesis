@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "asset": {
+    "asset_id": "node-0042",
+    "platform": "small-uas-quadrotor",
+    "program": "FLEET-DEMO",
+    "compute_module": "som-vendor-a"
+  },
+  "image": {
+    "build_id": "2026.07.02-r2",
+    "image_digest": "sha256:5c4d4e966b9f9b479ceb0eed982ea79e6a0021d603c489260d3a7df66449d7df",
+    "sbom_digest": "sha256:3e179f28ab188be41221adc37c892a187a926355906595d8d0dcc62b510d4c49",
+    "sbom_format": "spdx-2.3",
+    "provenance_digest": "sha256:c4e847270be5e5f8880f1c5146f0c7fc1b5c9fa3f11773969b0dfd2c4524b4b8",
+    "signing_key_id": "fleet-release-2026",
+    "built_at_utc": "2026-07-02T09:30:00Z",
+    "builder": "ci.fleet.example/build/8907"
+  },
+  "components": {
+    "detect-model": {
+      "kind": "model",
+      "version": "4.2.2",
+      "digest": "sha256:5f43b0f50ce7aad1325b1d8d72c11de7ac48575bfcd1c04abcf3e7312671b001"
+    },
+    "autopilot-fw": {
+      "kind": "firmware",
+      "version": "1.9.3",
+      "digest": "sha256:50f426ea6aef47d667aa2eb5f4816bbce821aa1a59eeb215d9db73c77c9d9195"
+    }
+  },
+  "event": {
+    "event_type": "patch",
+    "event_time_utc": "2026-07-02T10:00:00Z",
+    "authorized_by": "release-officer@fleet.example",
+    "note": "detect-model 4.2.2 retrain, CVE-2026-0042 mitigation"
+  }
+}

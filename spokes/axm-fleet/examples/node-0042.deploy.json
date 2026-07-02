@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "asset": {
+    "asset_id": "node-0042",
+    "platform": "small-uas-quadrotor",
+    "program": "FLEET-DEMO",
+    "compute_module": "som-vendor-a"
+  },
+  "image": {
+    "build_id": "2026.07.02-r1",
+    "image_digest": "sha256:6d84f6ec65ccbe795fc0ab14b8dcb169784006a6da8d798f80f8a87ad35a129f",
+    "sbom_digest": "sha256:0352504220627acc8439841afa85fcb497928bd569d2a2bf2a8df6636ef749e0",
+    "sbom_format": "spdx-2.3",
+    "provenance_digest": "sha256:d0b6cac28857d5fb8a6fa99b5c3249b17ad931918f49eca28ba02c773b954bdd",
+    "signing_key_id": "fleet-release-2026",
+    "built_at_utc": "2026-07-01T18:00:00Z",
+    "builder": "ci.fleet.example/build/8841"
+  },
+  "components": {
+    "detect-model": {
+      "kind": "model",
+      "version": "4.2.1",
+      "digest": "sha256:63af0d0740e035ef684a8c96f622b08b80b5500a28a4c5ff4f8348e58cf197e0"
+    },
+    "autopilot-fw": {
+      "kind": "firmware",
+      "version": "1.9.3",
+      "digest": "sha256:50f426ea6aef47d667aa2eb5f4816bbce821aa1a59eeb215d9db73c77c9d9195"
+    }
+  },
+  "event": {
+    "event_type": "deploy",
+    "event_time_utc": "2026-07-02T00:00:00Z",
+    "authorized_by": "release-officer@fleet.example",
+    "note": "initial fielding"
+  }
+}
