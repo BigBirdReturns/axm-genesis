@@ -1,220 +1,175 @@
-"""
-Executable contract for COMPATIBILITY.md
-========================================
+"""The frozen compatibility contract (COMPATIBILITY.md).
 
-Every machine-checkable promise in COMPATIBILITY.md is asserted here, so the
-document cannot silently drift from the code:
-
-- Section 3: suite identifiers in the doc == axm_verify.const.KNOWN_SUITES
-- Section 4: CLI exit codes (0 valid / 1 verification failed / 2 malformed),
-  JSON on stdout, human-readable reasons on stderr
-- Section 5: claim-schema field names in the doc == CLAIMS_SCHEMA columns
-- Spec section 5.2: manifest field enforcement (E_MANIFEST_SCHEMA names the
-  offending field)
-
-The CLI is exercised via subprocess because the exit codes themselves are the
-frozen contract.
+Two halves:
+1. The CLI exit-code contract, exercised end-to-end via subprocess against
+   every shard vector in EXPECTED.md (0 pass / 1 fail / 2 malformed).
+2. Drift checks that pin COMPATIBILITY.md and the packaging metadata to the
+   code: exactly one suite identifier, the frozen claims schema, and the
+   single-sourced version.
 """
 from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 import sys
-from pathlib import Path
+import tomllib
+from typing import List
 
 import pytest
 
-from axm_verify.const import CLAIMS_SCHEMA, KNOWN_SUITES, MALFORMED_SHARD_CODES
-from axm_verify.logic import verify_shard
+import axm_verify
+from axm_verify.const import CLAIMS_SCHEMA, SUITE_HYBRID1
+from helpers import (
+    CI_PUB_PATH,
+    COMPATIBILITY_MD,
+    PYPROJECT_TOML,
+    REPO_ROOT,
+    SHARD_VECTORS_DIR,
+    parse_expected_rows,
+    requires_mldsa_backend,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-COMPATIBILITY_MD = REPO_ROOT / "COMPATIBILITY.md"
-VECTORS = REPO_ROOT / "tests" / "vectors" / "shards"
-VALID_MINIMAL = VECTORS / "valid" / "minimal"
-TRUSTED_KEY = REPO_ROOT / "keys" / "canonical_test_publisher.pub"
+ROWS = parse_expected_rows()
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _run_cli(shard: Path, trusted_key: Path = TRUSTED_KEY) -> subprocess.CompletedProcess:
+def _run_cli(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "-m", "axm_verify.cli", "shard", str(shard), "--trusted-key", str(trusted_key)],
+        [sys.executable, "-m", "axm_verify.cli", "shard", *args],
         capture_output=True,
         text=True,
+        cwd=REPO_ROOT,
     )
 
 
-def _doc_section(number: int) -> str:
-    """Return the body of '### <number>. ...' up to the next heading."""
-    text = COMPATIBILITY_MD.read_text(encoding="utf-8")
-    m = re.search(rf"^### {number}\..*?$(.*?)(?=^#{{2,3}} |\Z)", text, re.M | re.S)
-    assert m, f"COMPATIBILITY.md section {number} not found"
-    return m.group(1)
+# ── Exit codes 0/1/2, via subprocess, on the frozen vectors ──────────────────
+
+@requires_mldsa_backend
+@pytest.mark.parametrize("row", ROWS, ids=[r["vector"] for r in ROWS])
+def test_cli_exit_code_matches_expected_md(row: dict) -> None:
+    shard = SHARD_VECTORS_DIR / row["shard"]
+    proc = _run_cli(str(shard), "--trusted-key", str(CI_PUB_PATH))
+
+    assert proc.returncode == row["exit_code"], proc.stderr
+
+    # stdout is exactly one machine-readable JSON line.
+    stdout_lines = proc.stdout.strip().splitlines()
+    assert len(stdout_lines) == 1
+    result = json.loads(stdout_lines[0])
+    assert result["status"] == row["status"]
+    assert sorted({e["code"] for e in result["errors"]}) == row["error_codes"]
+    assert result["profiles_checked"] == row["profiles_checked"]
+    assert result["profiles_unchecked"] == row["profiles_unchecked"]
+
+    # stderr carries one "<code>: <message>" line per error; silent on PASS.
+    if row["exit_code"] == 0:
+        assert proc.stderr == ""
+    else:
+        stderr_codes = {line.split(":", 1)[0] for line in proc.stderr.strip().splitlines()}
+        assert stderr_codes == set(row["error_codes"])
 
 
-def _table_first_column_codes(section_body: str) -> list[str]:
-    """Extract the backticked first cell of each data row in a markdown table."""
-    out = []
-    for line in section_body.splitlines():
-        m = re.match(r"^\|\s*`([^`]+)`\s*\|", line)
-        if m:
-            out.append(m.group(1))
-    return out
-
-
-def _claims_schema_field_names() -> list[str]:
-    try:
-        return [f.name for f in CLAIMS_SCHEMA]  # pyarrow schema
-    except AttributeError:
-        return [name for name, _typ in CLAIMS_SCHEMA]  # duckdb fallback: list of tuples
-
-
-# ── Section 4: exit-code contract ────────────────────────────────────────────
-
-def test_exit_0_on_valid_shard() -> None:
-    proc = _run_cli(VALID_MINIMAL)
-    assert proc.returncode == 0, f"stdout={proc.stdout} stderr={proc.stderr}"
-    result = json.loads(proc.stdout)
-    assert result["status"] == "PASS"
-    assert result["errors"] == []
-
-
-def test_exit_0_with_vectors_own_publisher_key() -> None:
-    proc = _run_cli(VALID_MINIMAL, trusted_key=VALID_MINIMAL / "sig" / "publisher.pub")
-    assert proc.returncode == 0, f"stdout={proc.stdout} stderr={proc.stderr}"
-
-
-@pytest.mark.parametrize("vector", ["bad_signature", "merkle_mismatch"])
-def test_exit_1_on_verification_failure(vector: str) -> None:
-    proc = _run_cli(VECTORS / "invalid" / vector)
-    assert proc.returncode == 1, f"stdout={proc.stdout} stderr={proc.stderr}"
-    result = json.loads(proc.stdout)
-    assert result["status"] == "FAIL"
-    # stderr carries one human-readable reason line per error
-    stderr_lines = [ln for ln in proc.stderr.splitlines() if ln.strip()]
-    assert len(stderr_lines) == len(result["errors"])
-    for err, line in zip(result["errors"], stderr_lines):
-        assert line.startswith(err["code"] + ":")
-
-
-def test_exit_2_on_missing_manifest_vector() -> None:
-    proc = _run_cli(VECTORS / "invalid" / "missing_manifest")
-    assert proc.returncode == 2, f"stdout={proc.stdout} stderr={proc.stderr}"
-    result = json.loads(proc.stdout)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert codes and codes <= set(MALFORMED_SHARD_CODES)
-    assert proc.stderr.strip(), "stderr must carry a human-readable reason"
-
-
-def test_exit_2_on_empty_directory(tmp_path: Path) -> None:
-    empty = tmp_path / "empty_shard"
-    empty.mkdir()
-    proc = _run_cli(empty)
-    assert proc.returncode == 2, f"stdout={proc.stdout} stderr={proc.stderr}"
-
-
-def test_exit_2_on_nonexistent_path(tmp_path: Path) -> None:
-    # click's usage error for a missing PATH also exits 2, consistent with the contract
-    proc = _run_cli(tmp_path / "does_not_exist")
+@requires_mldsa_backend
+def test_cli_nonexistent_path_exits_2() -> None:
+    proc = _run_cli("/no/such/shard", "--trusted-key", str(CI_PUB_PATH))
     assert proc.returncode == 2
 
 
-def test_stdout_is_json_even_on_failure() -> None:
-    proc = _run_cli(VECTORS / "invalid" / "bad_signature")
-    result = json.loads(proc.stdout)
-    assert set(result) >= {"shard", "status", "error_count", "errors"}
+@requires_mldsa_backend
+def test_cli_missing_trusted_key_option_exits_2() -> None:
+    shard = SHARD_VECTORS_DIR / "valid" / "minimal" / "shard"
+    proc = _run_cli(str(shard))
+    assert proc.returncode == 2
 
 
-# ── Section 3: suite identifiers must match KNOWN_SUITES ─────────────────────
+# ── COMPATIBILITY.md drift checks ────────────────────────────────────────────
 
-def test_doc_suite_identifiers_match_code() -> None:
-    doc_suites = _table_first_column_codes(_doc_section(3))
-    assert set(doc_suites) == set(KNOWN_SUITES), (
-        f"COMPATIBILITY.md section 3 lists {sorted(doc_suites)} "
-        f"but KNOWN_SUITES is {sorted(KNOWN_SUITES)}"
+def _doc() -> str:
+    return COMPATIBILITY_MD.read_text(encoding="utf-8")
+
+
+# Tokens that share the axm- prefix but are packages/tools, not suites.
+_NON_SUITE_TOKENS = {"axm-genesis", "axm-verify", "axm-build", "axm-core", "axm-chat"}
+
+
+def test_doc_names_exactly_one_suite() -> None:
+    doc = _doc()
+    tokens = set(re.findall(r"\baxm-[a-z0-9][a-z0-9-]*\b", doc)) - _NON_SUITE_TOKENS
+    assert tokens == {SUITE_HYBRID1}, (
+        f"COMPATIBILITY.md must name exactly the {SUITE_HYBRID1!r} suite, found {sorted(tokens)}"
     )
+    assert "axm-blake3-mldsa44" not in doc  # the deleted v0.x suite
+    assert SUITE_HYBRID1 == "axm-hybrid1"
 
 
-# ── Section 5: claim schema field names must match CLAIMS_SCHEMA ─────────────
-
-def test_doc_claim_schema_fields_match_code() -> None:
-    doc_fields = _table_first_column_codes(_doc_section(5))
-    code_fields = _claims_schema_field_names()
-    assert doc_fields == code_fields, (
-        f"COMPATIBILITY.md section 5 lists {doc_fields} "
-        f"but CLAIMS_SCHEMA is {code_fields}"
-    )
-
-
-# ── Section 2: frozen Merkle empty-root constant appears in the doc ──────────
-
-def test_doc_states_frozen_mldsa44_empty_root() -> None:
-    from axm_build.merkle import EMPTY_ROOT_MLDSA44
-
-    assert EMPTY_ROOT_MLDSA44 in _doc_section(2), (
-        "COMPATIBILITY.md section 2 must state the frozen "
-        "axm-blake3-mldsa44 empty-root constant"
-    )
+def _first_column_fields(table_lines: List[str]) -> List[str]:
+    fields = []
+    for line in table_lines:
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        m = re.fullmatch(r"`([A-Za-z_][A-Za-z0-9_]*)`", cells[0])
+        if m:
+            fields.append(m.group(1))
+    return fields
 
 
-# ── Section 4 doc text names the real invocation and exit codes ──────────────
+def test_doc_claims_schema_matches_code() -> None:
+    """The claims field table in COMPATIBILITY.md == axm_verify CLAIMS_SCHEMA."""
+    doc = _doc()
+    tables: List[List[str]] = []
+    current: List[str] = []
+    for line in doc.splitlines():
+        if line.lstrip().startswith("|"):
+            current.append(line)
+        elif current:
+            tables.append(current)
+            current = []
+    if current:
+        tables.append(current)
 
-def test_doc_section_4_states_real_invocation() -> None:
-    body = _doc_section(4)
-    assert "axm-verify shard" in body
-    assert "--trusted-key" in body
-    for code in sorted(MALFORMED_SHARD_CODES):
-        assert code in body, f"section 4 must name malformed-shard code {code}"
-
-
-# ── Spec 5.2: manifest schema enforcement (E_MANIFEST_SCHEMA names field) ────
-
-def _mutated_copy(tmp_path: Path, drop_field: str) -> Path:
-    shard = tmp_path / f"shard_no_{drop_field}"
-    shutil.copytree(VALID_MINIMAL, shard)
-    manifest_path = shard / "manifest.json"
-    manifest = json.loads(manifest_path.read_bytes())
-    del manifest[drop_field]
-    manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
-    return shard
-
-
-@pytest.mark.parametrize("field", ["spec_version", "sources"])
-def test_manifest_missing_field_reports_manifest_schema(tmp_path: Path, field: str) -> None:
-    shard = _mutated_copy(tmp_path, field)
-    result = verify_shard(shard, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    matching = [
-        e for e in result["errors"]
-        if e["code"] == "E_MANIFEST_SCHEMA" and field in e["message"]
-    ]
-    assert matching, (
-        f"Expected an E_MANIFEST_SCHEMA error naming '{field}', got {result['errors']}"
-    )
-    # Manifest validation runs before signature verification: no sig error reported
-    assert all(e["code"] != "E_SIG_INVALID" for e in result["errors"])
+    claims_tables = [t for t in tables if any("`claim_id`" in line for line in t)]
+    assert claims_tables, "COMPATIBILITY.md must document the frozen claims schema"
+    documented = {f for t in claims_tables for f in _first_column_fields(t)}
+    assert documented == set(CLAIMS_SCHEMA)
+    assert set(CLAIMS_SCHEMA) == {
+        "claim_id", "subject", "predicate", "object", "object_type", "tier",
+    }
 
 
-def test_manifest_schema_violation_exits_1_not_2(tmp_path: Path) -> None:
-    shard = _mutated_copy(tmp_path, "spec_version")
-    proc = _run_cli(shard)
-    assert proc.returncode == 1, f"stdout={proc.stdout} stderr={proc.stderr}"
-    assert "E_MANIFEST_SCHEMA" in proc.stderr
-    assert "spec_version" in proc.stderr
+def test_doc_core_tables_are_jsonl_not_parquet() -> None:
+    doc = _doc()
+    assert "claims.jsonl" in doc
+    for legacy in ("claims.parquet", "entities.parquet", "provenance.parquet",
+                   "spans.parquet"):
+        assert legacy not in doc, f"COMPATIBILITY.md still references {legacy}"
 
+
+def test_doc_pins_the_frozen_cli_contract() -> None:
+    doc = _doc()
+    assert "axm-verify shard" in doc
+    for code in ("E_LAYOUT_MISSING", "E_SCHEMA_MISSING", "E_SIG_MISSING"):
+        assert code in doc, f"COMPATIBILITY.md must define the exit-2 code set ({code})"
+
+
+# ── Version single-sourcing ──────────────────────────────────────────────────
 
 def test_version_is_single_sourced() -> None:
-    """axm_verify.__version__ must match the installed package version.
+    assert axm_verify.__version__ == "1.0.0rc1"
 
-    RFC 0002 D8 flagged the drift (module said 1.1.0 while pyproject said
-    1.2.0); this pins them together so a release can't ship disagreeing
-    version strings again.
-    """
-    import importlib.metadata
+    pyproject = tomllib.loads(PYPROJECT_TOML.read_text(encoding="utf-8"))
+    project = pyproject["project"]
+    if "version" in project:
+        assert project["version"] == axm_verify.__version__
+    else:
+        assert "version" in project.get("dynamic", [])
+        attr = pyproject["tool"]["setuptools"]["dynamic"]["version"]["attr"]
+        assert attr == "axm_verify.__version__"
 
-    import axm_verify
 
-    assert axm_verify.__version__ == importlib.metadata.version("axm-genesis")
+def test_installed_package_version_matches() -> None:
+    from importlib import metadata
+
+    try:
+        installed = metadata.version("axm-genesis")
+    except metadata.PackageNotFoundError:
+        pytest.skip("axm-genesis is not installed in this environment")
+    assert installed == axm_verify.__version__

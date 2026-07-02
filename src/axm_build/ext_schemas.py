@@ -1,102 +1,82 @@
-"""
-AXM Extension Schemas
+"""AXM extension table schemas (spec section 16).
 
-Normative Arrow schemas for ext/ parquet files.
-Each extension has: schema, sort key, semantics, and validation rules.
+AXM-defined extensions are canonical JSONL files under ext/, named
+<name>@<version>.jsonl, with the same encoding discipline as the core
+tables: canonical JSON lines, exact key sets, no nulls, no floats, rows
+sorted bytewise ascending by the sort key.
 
-INVARIANT: Extension schemas are versioned (name@version).
-INVARIANT: Extensions use stable join keys that survive shard rebuilds.
-INVARIANT: Old verifiers ignore extensions they don't understand.
+ext/ is opaque to the kernel verifier; these schemas bind only the
+reference compiler. Shard ids inside extension tables use the sh1_ form
+and refer only to OTHER shards — never to the containing shard, whose id
+is ambient (derived from its manifest).
+
+INVARIANT: Extension schemas are versioned (name@version); a new version
+is a new identifier.
 """
 from __future__ import annotations
 
-try:
-    import pyarrow as pa
-except ImportError:
-    pa = None
+# ---------------------------------------------------------------------------
+# locators@1 — structural position of evidence in source documents
+# ---------------------------------------------------------------------------
+# Join key: evidence_addr (deterministic hash of source_hash + byte range);
+# survives shard rebuilds because it depends only on content bytes.
+# page_index / paragraph_index are decimal strings, "" when unknown
+# (canonical JSONL forbids nulls, and negative sentinels are not encodable).
 
+LOCATORS_SCHEMA = {
+    "evidence_addr": "string",
+    "span_id": "string",
+    "source_hash": "string",
+    "kind": "string",             # pdf, docx, html, txt, pptx, xlsx
+    "page_index": "string",       # decimal or ""
+    "paragraph_index": "string",  # decimal or ""
+    "block_id": "string",
+    "file_path": "string",
+}
+LOCATORS_SORT_KEY = "evidence_addr"
 
 # ---------------------------------------------------------------------------
-# locators@1 — Structural position of evidence in source documents
+# references@1 — cross-shard claim references (composition)
 # ---------------------------------------------------------------------------
-# Join key: evidence_addr (deterministic hash of source_hash + byte range)
-# Survives shard rebuilds because it depends only on content bytes, not internal IDs.
-# Sort key: evidence_addr (deterministic)
+# dst_shard_id is a predecessor/foreign shard id in sh1_ form.
+# confidence is a decimal string in [0,1] (no floats in canonical JSONL).
 
-if pa is not None:
-    LOCATORS_SCHEMA = pa.schema([
-        ("evidence_addr", pa.string()),       # Stable: hash(source_hash, byte_start, byte_end)
-        ("span_id", pa.string()),             # Link to spans.parquet (present when available)
-        ("source_hash", pa.string()),         # Content hash
-        ("kind", pa.string()),                # pdf, docx, html, txt, pptx, xlsx
-        ("page_index", pa.int16()),           # Nullable: page number (0-indexed)
-        ("paragraph_index", pa.int32()),      # Nullable: paragraph index
-        ("block_id", pa.string()),            # Nullable: section/div identifier
-        ("file_path", pa.string()),           # Original filename
-    ])
-    LOCATORS_SORT_KEY = "evidence_addr"
+REFERENCES_SCHEMA = {
+    "src_claim_id": "string",     # claim in THIS shard making the reference
+    "relation_type": "string",    # supports, contradicts, derives_from, supersedes, cites
+    "dst_shard_id": "string",     # sh1_<64 hex> — target shard identity
+    "dst_object_type": "string",  # claim, entity, or shard
+    "dst_object_id": "string",
+    "confidence": "string",       # decimal string, e.g. "1.0"
+    "note": "string",
+}
+REFERENCES_SORT_KEY = "src_claim_id"
 
-    # ---------------------------------------------------------------------------
-    # references@1 — Cross-shard claim references (composition)
-    # ---------------------------------------------------------------------------
-    # Enables: multi-shard queries, decision shards citing source shards,
-    #          base+delta evaluation (SOCOM doctrine + FRAGO)
-    # Integrity rule: if dst_shard_id is mounted, target must exist or ref is "broken"
+# ---------------------------------------------------------------------------
+# lineage@1 — shard versioning and supersession
+# ---------------------------------------------------------------------------
+# One row per superseded shard. There is NO self-id column: a shard's own
+# id is the hash of its manifest and cannot appear in its own files.
 
-    REFERENCES_SCHEMA = pa.schema([
-        ("src_claim_id", pa.string()),        # Claim in THIS shard making the reference
-        ("relation_type", pa.string()),       # supports, contradicts, derives_from, supersedes, cites
-        ("dst_shard_id", pa.string()),        # Target shard ID
-        ("dst_object_type", pa.string()),     # claim, entity, or shard
-        ("dst_object_id", pa.string()),       # Target claim_id, entity_id, or shard_id
-        ("confidence", pa.float32()),         # 0.0-1.0
-        ("note", pa.string()),               # Optional human-readable annotation
-    ])
-    REFERENCES_SORT_KEY = "src_claim_id"
+LINEAGE_SCHEMA = {
+    "supersedes_shard_id": "string",  # sh1_<64 hex> — the predecessor
+    "action": "string",               # supersede | amend | retract
+    "timestamp": "string",            # RFC 3339
+    "note": "string",
+}
+LINEAGE_SORT_KEY = "supersedes_shard_id"
 
-    # ---------------------------------------------------------------------------
-    # lineage@1 — Shard versioning and supersession
-    # ---------------------------------------------------------------------------
-    # Enables: delta shards, incremental updates, version chains
-    # Manifest also carries: "supersedes": [shard_id...] for cheap discovery
+# ---------------------------------------------------------------------------
+# temporal@1 — claim validity windows
+# ---------------------------------------------------------------------------
 
-    LINEAGE_SCHEMA = pa.schema([
-        ("shard_id", pa.string()),            # THIS shard
-        ("supersedes_shard_id", pa.string()), # Shard being superseded
-        ("action", pa.string()),              # supersede, amend, retract
-        ("timestamp", pa.string()),           # ISO 8601
-        ("note", pa.string()),               # Optional context
-    ])
-    LINEAGE_SORT_KEY = "shard_id"
-
-    # ---------------------------------------------------------------------------
-    # temporal@1 — Claim validity windows
-    # ---------------------------------------------------------------------------
-    # Enables: staleness detection, time-scoped queries
-
-    TEMPORAL_SCHEMA = pa.schema([
-        ("claim_id", pa.string()),
-        ("valid_from", pa.string()),          # ISO 8601 or empty for "always"
-        ("valid_until", pa.string()),         # ISO 8601 or empty for "until superseded"
-        ("temporal_context", pa.string()),    # e.g. "valid until Army revision FM 21-11-1"
-    ])
-    TEMPORAL_SORT_KEY = "claim_id"
-
-    # ---------------------------------------------------------------------------
-    # coords@1 — Semantic coordinate space (from deprecated AXM-KG)
-    # ---------------------------------------------------------------------------
-    # Enables: geometric queries ("all quantities"), coordinate pathfinding
-    # Maps to MM-TT-SS-XXXX 8-category coordinate system
-
-    COORDS_SCHEMA = pa.schema([
-        ("entity_id", pa.string()),
-        ("major", pa.string()),               # Major category
-        ("type", pa.string()),                # Type within major
-        ("subtype", pa.string()),             # Subtype
-        ("instance", pa.string()),            # Instance identifier
-    ])
-    COORDS_SORT_KEY = "entity_id"
-
+TEMPORAL_SCHEMA = {
+    "claim_id": "string",
+    "valid_from": "string",        # RFC 3339 or "" for "always"
+    "valid_until": "string",       # RFC 3339 or "" for "until superseded"
+    "temporal_context": "string",
+}
+TEMPORAL_SORT_KEY = "claim_id"
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -104,40 +84,27 @@ if pa is not None:
 
 EXTENSION_REGISTRY = {
     "locators@1": {
-        "file": "locators.parquet",
-        "sort_key": "evidence_addr",
+        "file": "locators@1.jsonl",
+        "schema": LOCATORS_SCHEMA,
+        "sort_key": LOCATORS_SORT_KEY,
         "description": "Structural position of evidence in source documents",
-        "stable_join": "evidence_addr = hash(source_hash + byte_start + byte_end)",
-        "depends_on": [],
     },
     "references@1": {
-        "file": "references.parquet",
-        "sort_key": "src_claim_id",
+        "file": "references@1.jsonl",
+        "schema": REFERENCES_SCHEMA,
+        "sort_key": REFERENCES_SORT_KEY,
         "description": "Cross-shard claim references for composition",
-        "stable_join": "src_claim_id (from claims.parquet), dst_shard_id + dst_object_id",
-        "depends_on": [],
-        "integrity_rule": "If dst_shard_id is mounted, target must exist or ref is broken",
     },
     "lineage@1": {
-        "file": "lineage.parquet",
-        "sort_key": "shard_id",
-        "description": "Shard versioning and supersession chains",
-        "stable_join": "shard_id, supersedes_shard_id",
-        "depends_on": [],
-        "manifest_hint": "supersedes: [shard_id...] for cheap discovery",
+        "file": "lineage@1.jsonl",
+        "schema": LINEAGE_SCHEMA,
+        "sort_key": LINEAGE_SORT_KEY,
+        "description": "Predecessor supersession rows (no self-id column)",
     },
     "temporal@1": {
-        "file": "temporal.parquet",
-        "sort_key": "claim_id",
+        "file": "temporal@1.jsonl",
+        "schema": TEMPORAL_SCHEMA,
+        "sort_key": TEMPORAL_SORT_KEY,
         "description": "Claim validity windows for staleness detection",
-        "stable_join": "claim_id (from claims.parquet)",
-        "depends_on": [],
-    },
-    "coords@1": {
-        "file": "coords.parquet",
-        "sort_key": "entity_id",
-        "description": "Semantic coordinate space (MM-TT-SS-XXXX)",
-        "stable_join": "entity_id (from entities.parquet)",
-        "depends_on": [],
     },
 }

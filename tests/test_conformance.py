@@ -1,250 +1,223 @@
-"""
-AXM Genesis Conformance Test Suite
-====================================
-Version: 0.1
-Covers: REQ 1–5 of AXM_Compatibility_Test_Procedure.md
+"""Conformance requirements (spec/v1/CONFORMANCE.md, REQ 1-4) and the
+reproducibility claim behind canonical JSONL (RFC 0002 D2).
 
-Run:
-    cd genesis && python -m pytest tests/test_conformance.py -v
-
-All tests operate on a mutable copy of the gold shard. The gold shard
-bytes are never modified — each test gets a fresh copy via the `gold`
-fixture.
+REQ 1-4 are mapped onto the frozen shard vectors by parsing the REQ table
+out of CONFORMANCE.md itself, so the requirement <-> error-code mapping in
+the spec and the vectors cannot drift apart. REQ 5 must be gone from the
+kernel (it is the embodied@1 profile).
 """
 from __future__ import annotations
 
+import json
+import re
 import shutil
-import struct
+import subprocess
+import sys
 from pathlib import Path
+from typing import Dict, List, Set
 
 import pytest
 
-from axm_verify.logic import verify_shard
 from axm_verify.const import ErrorCode
+from axm_verify.crypto import derive_shard_id
+from axm_verify.logic import verify_shard
+from helpers import (
+    CONFORMANCE_MD,
+    GOLD_PUB,
+    GOLD_SHARD,
+    REPO_ROOT,
+    parse_expected_rows,
+    requires_mldsa_backend,
+)
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+pytestmark = requires_mldsa_backend
 
-REPO_ROOT  = Path(__file__).resolve().parents[1]
-GOLD_SHARD = REPO_ROOT / "shards" / "gold" / "fm21-11-hemorrhage-v1"
-TRUSTED_KEY = REPO_ROOT / "keys" / "canonical_test_publisher.pub"
-
-# Binary format constants — must match axm-embodied protocol.py exactly
-# cam_latents.bin: [AXLF(4)] [records: AXLR(4)+ver(1)+frame_id(4)+length(4)+payload]*
-LATENT_FILE_MAGIC  = b"AXLF"   # 4-byte file header
-LATENT_REC_MAGIC   = b"AXLR"   # per-record magic
-LATENT_REC_VERSION = 1
-LATENT_HEADER_FMT  = "<4sBII"  # magic(4) ver(1) frame_id(4) length(4)
-LATENT_HEADER_LEN  = struct.calcsize(LATENT_HEADER_FMT)  # 13 bytes
-LATENT_PAYLOAD_LEN = 256       # matches LATENT_DIM in protocol.py
-
-
-@pytest.fixture
-def gold(tmp_path: Path) -> Path:
-    """Fresh mutable copy of the gold shard for each test."""
-    dst = tmp_path / "shard"
-    shutil.copytree(GOLD_SHARD, dst)
-    return dst
+ROWS = {row["vector"]: row for row in parse_expected_rows()}
 
 
-# ── Baseline ──────────────────────────────────────────────────────────────────
+def _req_codes_from_spec() -> Dict[int, Set[str]]:
+    """Parse the REQ table in CONFORMANCE.md into {req_number: error codes}."""
+    reqs: Dict[int, Set[str]] = {}
+    for line in CONFORMANCE_MD.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^\|\s*(?:~~)?REQ (\d)(?:~~)?\s*\|", line)
+        if m:
+            reqs[int(m.group(1))] = set(re.findall(r"E_[A-Z_]+", line))
+    return reqs
 
-def test_baseline_gold_shard_passes(gold: Path) -> None:
-    """The gold shard must pass verification. All other tests depend on this."""
-    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "PASS", f"Gold shard failed: {result['errors']}"
+
+REQ_CODES = _req_codes_from_spec()
+
+# Which vectors demonstrate each kernel requirement being enforced.
+REQ_VECTORS: Dict[int, List[str]] = {
+    1: [
+        "invalid/unknown_suite",
+        "invalid/manifest_shard_id_present",
+        "invalid/statistics_mismatch",
+        "invalid/bad_signature_ed25519_half",
+    ],
+    2: [
+        "invalid/merkle_mismatch",
+        "invalid/sources_bijection_extra_file",
+        "invalid/sources_bijection_missing_entry",
+    ],
+    3: [
+        "invalid/missing_field",
+        "invalid/orphan_claim",
+        "invalid/dup_primary_key",
+        "invalid/unsorted_rows",
+    ],
+    4: [
+        "invalid/missing_manifest",
+        "invalid/bad_signature_mldsa_half",
+    ],
+}
 
 
-# ── REQ 1: Manifest integrity ─────────────────────────────────────────────────
+def test_spec_defines_req_1_through_4() -> None:
+    assert set(REQ_CODES) >= {1, 2, 3, 4}, "CONFORMANCE.md must define REQ 1-4"
+    for req, codes in REQ_CODES.items():
+        if req != 5:
+            assert codes, f"REQ {req} row in CONFORMANCE.md lists no error codes"
 
-def test_req1_manifest_byte_flip_detected(gold: Path) -> None:
-    """Flipping one byte in manifest.json must invalidate the signature."""
-    manifest_path = gold / "manifest.json"
-    raw = bytearray(manifest_path.read_bytes())
-    raw[10] ^= 0x01
-    manifest_path.write_bytes(bytes(raw))
 
-    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    # A byte flip in manifest.json may break JSON parsing (E_MANIFEST_SCHEMA)
-    # before the signature check runs, or it may produce a valid-but-different
-    # JSON document that fails signature verification (E_SIG_INVALID).
-    # Either error is correct — the shard is rejected.
-    assert codes & {ErrorCode.E_SIG_INVALID, ErrorCode.E_MANIFEST_SCHEMA}, (
-        f"Expected E_SIG_INVALID or E_MANIFEST_SCHEMA in {codes}"
+@pytest.mark.parametrize("req", [1, 2, 3, 4])
+def test_every_kernel_requirement_has_enforcing_vectors(req: int) -> None:
+    vectors = REQ_VECTORS[req]
+    assert vectors, f"REQ {req} has no covering vectors"
+    for vector in vectors:
+        row = ROWS[vector]
+        assert row["status"] == "FAIL"
+        assert set(row["error_codes"]) & REQ_CODES[req], (
+            f"{vector}: codes {row['error_codes']} do not evidence REQ {req}"
+        )
+
+
+def test_all_documented_kernel_codes_are_real() -> None:
+    kernel_codes = {e.value for e in ErrorCode}
+    for req in (1, 2, 3, 4):
+        assert REQ_CODES[req] <= kernel_codes, f"REQ {req} cites unknown codes"
+
+
+def test_req5_is_out_of_the_kernel() -> None:
+    # The spec marks REQ 5 as moved to the embodied@1 profile...
+    assert 5 in REQ_CODES
+    assert REQ_CODES[5] == {"E_BUFFER_DISCONTINUITY"}
+    # ...and the kernel no longer owns its code or any stream knowledge.
+    assert "E_BUFFER_DISCONTINUITY" not in {e.value for e in ErrorCode}
+    import axm_verify.logic as logic_mod
+
+    logic_src = Path(logic_mod.__file__).read_text(encoding="utf-8")
+    for token in ("cam_latents", "AXLF", "AXLR"):
+        assert token not in logic_src, f"kernel verifier still knows about {token}"
+
+
+# ── Determinism: same input -> byte-identical shard (RFC 0002 D2) ────────────
+
+def _compile(workdir: Path, out_name: str) -> Path:
+    candidates = workdir / "candidates.jsonl"
+    content = workdir / "content"
+    out = workdir / out_name
+    proc = subprocess.run(
+        [
+            sys.executable, "-m", "axm_build.cli", "compile",
+            str(candidates), str(content), str(out),
+            "--private-key", str(workdir / "keys" / "pub.key"),
+            "--namespace", "test/determinism",
+            "--title", "Determinism Shard",
+            "--created-at", "2026-07-02T00:00:00Z",
+            "--license-spdx", "CC0-1.0",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
     )
+    assert proc.returncode == 0, proc.stderr
+    return out
 
 
-def test_req1_manifest_invalid_json_detected(gold: Path) -> None:
-    """Replacing manifest.json with invalid JSON must be caught."""
-    (gold / "manifest.json").write_bytes(b"{not valid json")
-
-    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_MANIFEST_SYNTAX in codes or ErrorCode.E_SIG_INVALID in codes
+def _tree_bytes(root: Path) -> Dict[str, bytes]:
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in root.rglob("*")
+        if p.is_file()
+    }
 
 
-# ── REQ 2: Content identity ───────────────────────────────────────────────────
+def _signing_is_deterministic() -> bool:
+    """Ed25519 (RFC 8032) is deterministic; ML-DSA-44 depends on the backend
+    (dilithium-py signs deterministically here; liboqs uses hedged signing)."""
+    from axm_build.sign import hybrid1_keygen, hybrid1_sign
 
-def test_req2_content_byte_flip_changes_merkle_root(gold: Path) -> None:
-    """Flipping one byte in a content file must cause a Merkle mismatch."""
-    source = gold / "content" / "source.txt"
-    raw = bytearray(source.read_bytes())
-    raw[0] ^= 0x01
-    source.write_bytes(bytes(raw))
-
-    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_MERKLE_MISMATCH in codes or ErrorCode.E_SIG_INVALID in codes
+    _, sk = hybrid1_keygen()
+    return hybrid1_sign(sk, b"probe") == hybrid1_sign(sk, b"probe")
 
 
-def test_req2_parquet_byte_flip_changes_merkle_root(gold: Path) -> None:
-    """Flipping one byte in a graph parquet file must cause a Merkle mismatch."""
-    claims = gold / "graph" / "claims.parquet"
-    raw = bytearray(claims.read_bytes())
-    raw[-10] ^= 0x01
-    claims.write_bytes(bytes(raw))
+def test_compilation_is_reproducible(tmp_path: Path) -> None:
+    from axm_build.sign import hybrid1_keygen
 
-    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_MERKLE_MISMATCH in codes or ErrorCode.E_SIG_INVALID in codes
-
-
-# ── REQ 3: Lineage events ─────────────────────────────────────────────────────
-
-def test_req3_orphan_claim_detected(gold: Path) -> None:
-    """A claim referencing a non-existent entity must be rejected."""
-    vector = REPO_ROOT / "tests" / "vectors" / "shards" / "invalid" / "orphan_claim"
-    if not vector.exists():
-        pytest.skip("orphan_claim vector not present")
-
-    result = verify_shard(vector, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_REF_ORPHAN in codes
-
-
-def test_req3_null_in_column_detected(gold: Path) -> None:
-    """A null value in a required Parquet column must be rejected."""
-    vector = REPO_ROOT / "tests" / "vectors" / "shards" / "invalid" / "null_in_column"
-    if not vector.exists():
-        pytest.skip("null_in_column vector not present")
-
-    result = verify_shard(vector, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_SCHEMA_NULL in codes
-
-
-# ── REQ 4: Proof bundle ───────────────────────────────────────────────────────
-
-def test_req4_wrong_signing_key_rejected(gold: Path, tmp_path: Path) -> None:
-    """A shard verified with the wrong trusted key must be rejected."""
-    from nacl.signing import SigningKey
-    wrong_key = SigningKey.generate()
-    wrong_pub = tmp_path / "wrong.pub"
-    wrong_pub.write_bytes(bytes(wrong_key.verify_key))
-
-    result = verify_shard(gold, trusted_key_path=wrong_pub)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_SIG_INVALID in codes
-
-
-def test_req4_sig_byte_flip_rejected(gold: Path) -> None:
-    """Flipping one byte in the signature must cause rejection."""
-    sig_path = gold / "sig" / "manifest.sig"
-    raw = bytearray(sig_path.read_bytes())
-    raw[0] ^= 0x01
-    sig_path.write_bytes(bytes(raw))
-
-    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_SIG_INVALID in codes
-
-
-def test_req4_missing_manifest_rejected(gold: Path) -> None:
-    """A shard with no manifest.json must be rejected."""
-    vector = REPO_ROOT / "tests" / "vectors" / "shards" / "invalid" / "missing_manifest"
-    if not vector.exists():
-        pytest.skip("missing_manifest vector not present")
-
-    result = verify_shard(vector, trusted_key_path=TRUSTED_KEY)
-    assert result["status"] == "FAIL"
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_LAYOUT_MISSING in codes
-
-
-# ── REQ 5: Non-selective recording ───────────────────────────────────────────
-#
-# These tests write a synthetic cam_latents.bin into content/ of the gold shard
-# copy. The gold shard has no binary streams — these tests inject them to
-# exercise the continuity validator in isolation.
-#
-# Binary format (must match embodied protocol.py):
-#   File:   [AXLF (4 bytes)] [record...]*
-#   Record: [AXLR (4)] [ver=1 (1)] [frame_id (4)] [length (4)] [payload (length)]
-
-def _write_latents(path: Path, frame_ids: list[int], payload_len: int = LATENT_PAYLOAD_LEN) -> None:
-    """Write a cam_latents.bin with the given frame_ids in order."""
-    with open(path, "wb") as f:
-        f.write(LATENT_FILE_MAGIC)  # 4-byte file header
-        for fid in frame_ids:
-            payload = bytes([fid % 256]) * payload_len
-            header = struct.pack(LATENT_HEADER_FMT, LATENT_REC_MAGIC,
-                                 LATENT_REC_VERSION, fid, len(payload))
-            f.write(header + payload)
-
-
-def test_req5_buffer_gap_detected(gold: Path) -> None:
-    """A gap in the hot stream frame sequence must trigger E_BUFFER_DISCONTINUITY.
-
-    Simulates an agent dropping frame 5 to conceal a failure event.
-    Valid sequence [0,1,2,3,4,6,7,...] — frame 5 missing — must fail.
-
-    We call _validate_hot_stream_continuity directly because verify_shard
-    short-circuits on E_MERKLE_MISMATCH (correct behavior: tampered content
-    fails Merkle before any further checks). This test validates the
-    continuity logic in isolation.
-    """
-    from axm_verify.logic import _validate_hot_stream_continuity
-
-    latents_path = gold / "content" / "cam_latents.bin"
-    frame_ids = list(range(5)) + list(range(6, 11))
-    _write_latents(latents_path, frame_ids)
-
-    errors: list[dict] = []
-    _validate_hot_stream_continuity(gold / "content", errors)
-    codes = {e["code"] for e in errors}
-    assert ErrorCode.E_BUFFER_DISCONTINUITY in codes, (
-        f"Expected E_BUFFER_DISCONTINUITY in {codes}"
+    # Fixed input material.
+    (tmp_path / "content").mkdir()
+    (tmp_path / "content" / "doc.txt").write_text(
+        "Elevation supports hemorrhage control.\n", encoding="utf-8"
     )
-
-
-def test_req5_continuous_stream_passes_continuity_check(gold: Path) -> None:
-    """A perfectly continuous stream must not trigger E_BUFFER_DISCONTINUITY.
-
-    The shard will still fail on Merkle/sig (content changed) but must NOT
-    fail with E_BUFFER_DISCONTINUITY.
-    """
-    latents_path = gold / "content" / "cam_latents.bin"
-    _write_latents(latents_path, list(range(10)))
-
-    result = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    codes = {e["code"] for e in result["errors"]}
-    assert ErrorCode.E_BUFFER_DISCONTINUITY not in codes, (
-        "A continuous stream must not trigger E_BUFFER_DISCONTINUITY"
+    text = "Elevation supports hemorrhage control."
+    candidate = {
+        "type": "claim",
+        "subject_label": "elevation",
+        "predicate": "supports",
+        "object_label": "hemorrhage control",
+        "object_type": "entity",
+        "tier": 2,
+        "evidence": {
+            "source_file": "doc.txt",
+            "byte_start": 0,
+            "byte_end": len(text.encode("utf-8")),
+            "text": text,
+        },
+    }
+    (tmp_path / "candidates.jsonl").write_text(
+        json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+    keydir = tmp_path / "keys"
+    keydir.mkdir()
+    pk, sk = hybrid1_keygen()
+    (keydir / "pub.key").write_bytes(sk)
+    (keydir / "pub.pub").write_bytes(pk)
+
+    out1 = _compile(tmp_path, "out1")
+    out2 = _compile(tmp_path, "out2")
+
+    tree1, tree2 = _tree_bytes(out1), _tree_bytes(out2)
+    assert set(tree1) == set(tree2)
+
+    deterministic_sig = _signing_is_deterministic()
+    for relpath in sorted(tree1):
+        if relpath == "sig/manifest.sig" and not deterministic_sig:
+            # Hedged ML-DSA signing: bytes differ, but both must verify.
+            continue
+        assert tree1[relpath] == tree2[relpath], f"{relpath} is not reproducible"
+
+    # Identity is the manifest hash: byte-identical manifests, one shard_id.
+    assert derive_shard_id(tree1["manifest.json"]) == derive_shard_id(tree2["manifest.json"])
+
+    # Regardless of signature determinism, both compilations verify.
+    pub = keydir / "pub.pub"
+    for out in (out1, out2):
+        result = verify_shard(out, trusted_key_path=pub)
+        assert result["status"] == "PASS", result["errors"]
 
 
-# ── Cross-cutting: determinism ────────────────────────────────────────────────
+def test_verification_is_deterministic(tmp_path: Path) -> None:
+    shard = tmp_path / "gold"
+    shutil.copytree(GOLD_SHARD, shard)
+    first = verify_shard(shard, trusted_key_path=GOLD_PUB)
+    second = verify_shard(shard, trusted_key_path=GOLD_PUB)
+    assert first == second
+    assert first["status"] == "PASS"
 
-def test_verification_is_deterministic(gold: Path) -> None:
-    """Same inputs must produce identical verification output every time."""
-    result_a = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    result_b = verify_shard(gold, trusted_key_path=TRUSTED_KEY)
-    assert result_a == result_b, "Verification is not deterministic"
+
+def test_gold_shard_id_is_stable() -> None:
+    manifest_bytes = (GOLD_SHARD / "manifest.json").read_bytes()
+    sid = derive_shard_id(manifest_bytes)
+    assert re.fullmatch(r"sh1_[0-9a-f]{64}", sid)
+    assert sid == derive_shard_id(manifest_bytes)

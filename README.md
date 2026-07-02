@@ -25,13 +25,19 @@ verifier's exit codes are frozen and exercised by the conformance suite.
 Genesis compiles and signs; everything else reads. That boundary is the
 invariant that makes long-term verification possible.
 
+Building a new spoke? The adoption kit is [docs/ADOPTING.md](docs/ADOPTING.md)
+plus the copy-and-rename starter at [templates/spoke-template/](templates/spoke-template/).
+
 ## Quick start
 
 ```bash
 make install        # pip install -e ".[dev]"
-make test           # full suite — 90 passed, 3 skipped
-make verify-gold    # verify the gold shard — exit 0, status PASS
+make test           # full conformance suite
 make verify-frozen  # sha256 check that the gold shard bytes are untouched
+
+# Verify the gold shard (v2, axm-hybrid1) — exit 0, status PASS
+axm-verify shard shards/gold/fm21-11-hemorrhage-v2 \
+  --trusted-key keys/gold-v2-provisional.pub
 ```
 
 The verifier's command form and exit codes are frozen
@@ -46,107 +52,129 @@ axm-verify shard <shard_dir> --trusted-key <publisher_pubkey>
 
 ```
 shard/
-├── manifest.json          # Metadata, Merkle root, cryptographic suite
+├── manifest.json          # Canonical JSON: metadata, Merkle root, suite
 ├── sig/
-│   ├── manifest.sig       # ML-DSA-44 (post-quantum) or Ed25519 signature
-│   └── publisher.pub
+│   ├── manifest.sig       # Hybrid signature: Ed25519 ‖ ML-DSA-44 (2484 B)
+│   └── publisher.pub      # Hybrid public key (1344 B)
 ├── content/
-│   ├── source.txt         # Primary document (byte-addressable)
-│   └── [domain files]     # e.g. cam_latents.bin for embodied spokes
+│   └── source.txt         # Primary document(s), byte-addressable
 ├── graph/
-│   ├── entities.parquet
-│   ├── claims.parquet
-│   └── provenance.parquet
+│   ├── entities.jsonl     # Canonical JSONL core tables —
+│   ├── claims.jsonl       #   one canonical-JSON record per line,
+│   └── provenance.jsonl   #   sorted bytewise by primary key
 ├── evidence/
-│   └── spans.parquet
-└── ext/                   # Domain extensions (streams, coords, locators, …)
+│   └── spans.jsonl
+└── ext/                   # Optional extensions (opaque to the kernel)
 ```
 
-## Cryptographic suites
+There is no Parquet in the shard. A runtime may build a derived, local,
+rebuildable query cache in any format it likes — outside the shard, never
+Merkle-covered, never normative.
 
-| Suite | Algorithm | Key size | Sig size | Default |
-|-------|-----------|----------|----------|---------|
-| `ed25519` (legacy; absent `suite` field) | Ed25519 | 32 B | 64 B | pre-v1.1.0 |
-| `axm-blake3-mldsa44` | ML-DSA-44 (FIPS 204) | 1312 B | 2420 B | v1.1.0+ |
+## Cryptographic suite
 
-Both suites use BLAKE3 Merkle trees and SHA-256 content hashing; the Merkle
-construction differs by suite (COMPATIBILITY.md §2 states both exactly).
+| Suite | Algorithm | Key size | Sig size | Status |
+|-------|-----------|----------|----------|--------|
+| `axm-hybrid1` | Ed25519 ‖ ML-DSA-44 (FIPS 204); **both** components must verify | 1344 B | 2484 B | The only suite; `suite` field required |
 
-> **Roadmap.** [RFC 0002](rfcs/0002-v1-reset.md) — the v1.0 reset — was
-> **accepted 2026-07-02**: one hybrid suite (`axm-hybrid1`, Ed25519 ‖
-> ML-DSA-44), canonical JSONL core tables, Unicode-independent
-> canonicalization, and a gold shard v2 under a real key ceremony.
-> Implementation is in progress; the suites above remain the shipped
-> surface until it lands.
+One suite, one Merkle construction (domain-separated BLAKE3, RFC 6962
+odd-node promotion), one domain-separated signature message
+(`b"axm-genesis/v1/manifest\x00" + manifest_bytes`). A future break of
+either signature algorithm — quantum against Ed25519, cryptanalytic
+against the lattice — leaves the other component holding.
+COMPATIBILITY.md §2–§3 state the constructions exactly.
 
-ML-DSA-44 support is optional, with backend preference ordering:
+> **Roadmap.** [RFC 0002](rfcs/0002-v1-reset.md) — the v1.0 reset — is
+> **implemented on this branch**: hybrid suite, canonical JSONL core
+> tables, derived shard identity, full manifest enforcement,
+> Unicode-independent canonicalization, profiles, gold shard v2.
+> Pending before the freeze is declared: the offline key ceremony
+> (re-mint of gold v2 under the canonical publisher key) and the v1.0.0
+> tag — the maintainer runbook is [RELEASE.md](RELEASE.md).
+
+ML-DSA-44 needs a backend, with this preference ordering:
 
 ```bash
-pip install -e ".[pq]"         # liboqs-python (preferred C bindings)
-pip install -e ".[pq-compat]"  # dilithium-py (pure-Python fallback)
+pip install -e ".[mldsa]"         # liboqs-python (preferred C bindings)
+pip install -e ".[mldsa-compat]"  # dilithium-py (pure-Python fallback)
 ```
 
-For ML-DSA-44 compilation, `private_key` must be `sk||pk` (3840 bytes), or
-`sk` alone (2528 bytes) with `sig/publisher.pub` pre-placed — the compiler
-preserves a pre-placed key across its output-directory wipe.
+Keys are generated with `axm-build keygen <outdir> --name <publisher>`:
+a 3904-byte hybrid secret blob (keep it offline) and the 1344-byte public
+key. The builder deliberately has no default signing key.
 
 ## The gold shard
 
-`shards/gold/fm21-11-hemorrhage-v1/` is the reference shard, extracted from
-FM 21-11 (US Army first aid field manual). It defines correctness:
+`shards/gold/fm21-11-hemorrhage-v2/` is the reference shard, extracted from
+FM 21-11 (US Army first aid field manual) and minted under `axm-hybrid1`.
+It defines correctness:
 
 - A verifier that **accepts** this shard and **rejects** every invalid vector
   in `tests/vectors/shards/invalid/` is conformant.
 - The gold shard is frozen — CI enforces this with byte-level checksums
   (`shards/gold/CHECKSUMS.sha256`).
-- Its signature proves **integrity, not authenticity** — the signing key was
-  historically published in this repository. The honest trust model is in
+- Its current signature is **provisional**: the signing key was generated in
+  a cloud session (private half destroyed after one use), pending the
+  RFC 0002 offline key ceremony. The honest trust model is in
   [`shards/gold/README.md`](shards/gold/README.md); independent existence
   proofs (RFC 3161 timestamp, OpenTimestamps, Software Heritage archival)
   are committed under [`attestations/`](attestations/).
+- The v0.x gold shard (`fm21-11-hemorrhage-v1`, Ed25519, Parquet) is
+  archived history at [`archive/v0/`](archive/v0/README.md) — kept, not
+  normative.
 
 ## Compatibility requirements
 
-Spokes that produce shards must satisfy all five requirements:
+Spokes that produce shards must satisfy the four kernel requirements;
+domain checks live in profiles:
 
 | Req | Description | Error codes |
 |-----|-------------|------------|
-| REQ 1 | Manifest integrity | `E_SIG_INVALID`, `E_MERKLE_MISMATCH` |
+| REQ 1 | Manifest integrity | `E_MANIFEST_SCHEMA`, `E_SIG_INVALID` |
 | REQ 2 | Content identity | `E_MERKLE_MISMATCH`, `E_REF_SOURCE` |
-| REQ 3 | Lineage events | `E_REF_ORPHAN`, `E_SCHEMA_NULL` |
+| REQ 3 | Traceable lineage | `E_REF_ORPHAN`, `E_ID_CLAIM`, `E_SCHEMA_*` |
 | REQ 4 | Proof bundle | `E_SIG_INVALID`, `E_SIG_MISSING` |
-| REQ 5 | Non-selective recording | `E_BUFFER_DISCONTINUITY` |
 
-REQ 5 applies to spokes that maintain binary hot streams (e.g. embodied
-robotics); shards without `content/cam_latents.bin` pass through silently.
-The full error-code table lives in `src/axm_verify/const.py`, and every code
-is documented in [COMPATIBILITY.md](COMPATIBILITY.md) and the spec.
+The former REQ 5 (non-selective recording for embodied hot streams) is now
+the [`embodied@1` profile](spec/profiles/embodied@1.md): shards declare
+`"profiles": ["embodied@1"]` in the manifest, verifiers that implement a
+listed profile must run it, and verifiers that don't must report it as
+**unchecked** — silence never impersonates verification. Its error code
+`E_BUFFER_DISCONTINUITY` is a profile code, not a kernel code. The kernel
+error-code table lives in `src/axm_verify/const.py` and spec §14.
 
 ## Documentation
 
 | Document | What it is |
 |---|---|
-| [spec/v1.0/SPECIFICATION.md](spec/v1.0/SPECIFICATION.md) | The frozen protocol (normative) |
-| [spec/v1.0/CONFORMANCE.md](spec/v1.0/CONFORMANCE.md) | Minimum requirements for a valid shard |
+| [spec/v1/SPECIFICATION.md](spec/v1/SPECIFICATION.md) | The frozen protocol (normative) |
+| [spec/v1/CONFORMANCE.md](spec/v1/CONFORMANCE.md) | What a conforming shard and verifier must do |
+| [spec/profiles/embodied@1.md](spec/profiles/embodied@1.md) | The `embodied@1` profile (hot-stream continuity; formerly STREAM_FORMAT.md + REQ 5) |
 | [COMPATIBILITY.md](COMPATIBILITY.md) | What is frozen and what may change — machine-checked against the code by `tests/test_compatibility_contract.py` |
+| [RELEASE.md](RELEASE.md) | Maintainer runbook: key ceremony, gold re-mint, attestations, tag, PyPI, Zenodo |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | RFC process; gold-shard policy; what CI enforces |
+| [docs/ADOPTING.md](docs/ADOPTING.md) | How to build a spoke — the adoption kit (keys, compile→verify, conformance in CI, ext/, profiles, runtime registration) |
+| [templates/spoke-template/](templates/spoke-template/) | Minimal working spoke package — copy, rename, replace the extractor; ships the tamper-roundtrip test |
 | [rfcs/](rfcs/README.md) | Design decisions with status — the project's durable decision log |
 | [docs/DURABILITY.md](docs/DURABILITY.md) | The 30-year durability assessment and remediation status |
 | [docs/ERRATA.md](docs/ERRATA.md) | Corrections to published artifacts that cannot be edited |
 | [papers/](papers/README.md) | The design paper (explanatory, not normative) + errata pointer |
 | [attestations/](attestations/README.md) | RFC 3161 / OpenTimestamps / Software Heritage existence proofs |
-| [STREAM_FORMAT.md](STREAM_FORMAT.md) | Binary hot-stream format (`AXLF`/`AXLR`) |
+| [archive/v0/](archive/v0/README.md) | The v0.x prototype lineage (old spec, gold shard, vectors) — historical, not normative |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 | [tests/vectors/](tests/vectors/) | Conformance ground truth — frozen once added |
 
 ## Reimplementation
 
 AXM Genesis can be reimplemented in any language from the spec and vectors
-alone, using: canonical UTF-8 (NFC), deterministic JSON (sorted keys, no
-whitespace), BLAKE3 for Merkle hashing, SHA-256 for content hashing, Ed25519
-or ML-DSA-44 for signatures, and Parquet with explicit schemas. Correctness
-is defined by the gold shard and the test vectors — an implementation that
-passes them is conformant, whatever language it's written in.
+alone, using primitives a stranded implementer can rebuild in 2056:
+UTF-8 with NFC normalization, canonical JSON (sorted keys, no whitespace),
+SHA-256 for content hashing and identifiers, BLAKE3 for the Merkle tree and
+shard identity, and Ed25519 + ML-DSA-44 for the hybrid signature. That's
+the whole list — the JSONL move took Parquet off the verification-critical
+path, which was the point. Correctness is defined by the gold shard and the
+test vectors — an implementation that passes them is conformant, whatever
+language it's written in.
 
 ## License
 

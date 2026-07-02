@@ -1,25 +1,32 @@
-"""
-AXM Genesis — Cryptographic Verification
+"""AXM Genesis v1 — cryptographic verification (spec sections 7-9).
 
-Suite-aware Merkle root computation and signature verification.
+One suite (axm-hybrid1: Ed25519 || ML-DSA-44, BOTH must verify) and one
+Merkle construction (domain-separated BLAKE3, RFC 6962 odd-node promotion).
 
-  "ed25519" (legacy):  Ed25519 sigs, no domain separation, duplicate-odd-leaf
-  "axm-blake3-mldsa44": ML-DSA-44 sigs, domain-separated tree, RFC 6962 odd-leaf
+This module is intentionally independent of axm_build: an auditor can read
+the verify path alone.
 """
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Tuple
 
 import blake3
-from nacl.signing import VerifyKey
 from nacl.exceptions import BadSignatureError
+from nacl.signing import VerifyKey
+
+from .const import (
+    ED25519_PK_LEN,
+    ED25519_SIG_LEN,
+    HYBRID1_PK_LEN,
+    HYBRID1_SIG_LEN,
+    MANIFEST_SIG_DOMAIN,
+)
 
 # ML-DSA-44 backend: prefer liboqs (C bindings) over pure-Python dilithium-py.
 try:
     import oqs as _oqs
-    _HAS_MLDSA = True
 
     def _mldsa44_verify(pk: bytes, msg: bytes, sig: bytes) -> bool:
         with _oqs.Signature("ML-DSA-44") as _v:
@@ -27,44 +34,74 @@ try:
 
 except (ImportError, SystemExit):
     try:
-        from dilithium_py.dilithium import Dilithium2 as _Dilithium2
-        _HAS_MLDSA = True
+        from dilithium_py.ml_dsa import ML_DSA_44 as _ML_DSA_44
 
         def _mldsa44_verify(pk: bytes, msg: bytes, sig: bytes) -> bool:
-            return _Dilithium2.verify(pk, msg, sig)
+            return bool(_ML_DSA_44.verify(pk, msg, sig))
 
     except ImportError:
-        _HAS_MLDSA = False
 
         def _mldsa44_verify(pk: bytes, msg: bytes, sig: bytes) -> bool:  # type: ignore[misc]
             raise RuntimeError(
-                "No ML-DSA-44 backend installed — cannot verify ML-DSA-44 signatures. "
-                "Run: pip install liboqs-python  (preferred) "
-                "or: pip install dilithium-py"
+                "No ML-DSA-44 backend installed — cannot verify axm-hybrid1 signatures. "
+                "Run: pip install liboqs-python  (preferred, requires liboqs) "
+                "or: pip install dilithium-py  (pure-Python fallback)"
             )
 
 # Policy limits (implementation hardening, not protocol)
 MAX_MERKLE_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB
-MAX_FILE_BYTES = MAX_MERKLE_FILE_BYTES  # backward-compatible alias
 MAX_MERKLE_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
 MAX_MERKLE_FILES = 100_000
 HASH_CHUNK_SIZE = 64 * 1024
 
-# Frozen empty-tree constant for mldsa44 suite: BLAKE3(0x01)
-EMPTY_ROOT_MLDSA44 = "48fc721fbbc172e0925fa27af1671de225ba927134802998b10a1568a188652b"
+# Frozen empty-tree constant: BLAKE3(0x01)
+EMPTY_ROOT = "48fc721fbbc172e0925fa27af1671de225ba927134802998b10a1568a188652b"
 
-# Suite key/sig sizes for quick validation
-SUITE_SIZES = {
-    "ed25519": {"pk": 32, "sig": 64},
-    "axm-blake3-mldsa44": {"pk": 1312, "sig": 2420},
-}
+
+def manifest_signing_message(manifest_bytes: bytes) -> bytes:
+    """Domain-separated signature message (spec section 7.2)."""
+    return MANIFEST_SIG_DOMAIN + manifest_bytes
+
+
+def hybrid1_verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
+    """Verify an axm-hybrid1 signature. Valid iff BOTH components verify.
+
+    public_key = pk_ed25519(32) || pk_mldsa44(1312)   — 1344 bytes
+    signature  = sig_ed25519(64) || sig_mldsa44(2420) — 2484 bytes
+    """
+    if len(public_key) != HYBRID1_PK_LEN or len(signature) != HYBRID1_SIG_LEN:
+        return False
+    pk_ed, pk_ml = public_key[:ED25519_PK_LEN], public_key[ED25519_PK_LEN:]
+    sig_ed, sig_ml = signature[:ED25519_SIG_LEN], signature[ED25519_SIG_LEN:]
+    try:
+        VerifyKey(pk_ed).verify(message, sig_ed)
+    except (BadSignatureError, ValueError):
+        return False
+    try:
+        return bool(_mldsa44_verify(pk_ml, message, sig_ml))
+    except RuntimeError:
+        raise
+    except Exception:
+        return False
+
+
+def verify_manifest_signature(manifest_bytes: bytes, sig_path: Path, pubkey_path: Path) -> bool:
+    """Verify sig/manifest.sig over the domain-separated manifest message."""
+    if not sig_path.exists() or not pubkey_path.exists():
+        return False
+    sig = sig_path.read_bytes()
+    pub = pubkey_path.read_bytes()
+    return hybrid1_verify(pub, manifest_signing_message(manifest_bytes), sig)
 
 
 def _collect_and_validate_files(shard_root: Path) -> List[Tuple[str, Path]]:
-    """Collect shard files with size/count/symlink enforcement."""
+    """Collect Merkle-covered files with size/count/symlink enforcement.
+
+    Covers every regular file except manifest.json and sig/** , sorted by
+    the UTF-8 bytes of the POSIX relative path.
+    """
     files: List[Tuple[str, Path]] = []
     total_bytes = 0
-    file_count = 0
 
     for root, dirs, filenames in os.walk(shard_root, followlinks=False):
         root_path = Path(root)
@@ -86,10 +123,8 @@ def _collect_and_validate_files(shard_root: Path) -> List[Tuple[str, Path]]:
                 raise ValueError(f"File exceeds size limit: {rel} ({st.st_size} bytes)")
 
             total_bytes += st.st_size
-            file_count += 1
-
-            if file_count > MAX_MERKLE_FILES:
-                raise ValueError(f"Shard exceeds file count limit: {file_count}")
+            if len(files) + 1 > MAX_MERKLE_FILES:
+                raise ValueError(f"Shard exceeds file count limit: {MAX_MERKLE_FILES}")
             if total_bytes > MAX_MERKLE_TOTAL_BYTES:
                 raise ValueError(f"Shard exceeds total size limit: {total_bytes} bytes")
 
@@ -99,32 +134,16 @@ def _collect_and_validate_files(shard_root: Path) -> List[Tuple[str, Path]]:
     return files
 
 
-def _merkle_tree_legacy(leaves: List[bytes]) -> bytes:
-    """Legacy tree: duplicate odd leaf (Bitcoin style), no domain separation."""
+def _merkle_root(leaves: List[bytes]) -> bytes:
+    """The single frozen tree: node = BLAKE3(0x01 || left || right); an odd
+    node is promoted unchanged (RFC 6962 — never duplicated)."""
     if not leaves:
-        return blake3.blake3(b"").digest()
-    level = list(leaves)
-    while len(level) > 1:
-        nxt: List[bytes] = []
-        for i in range(0, len(level), 2):
-            left = level[i]
-            right = level[i + 1] if i + 1 < len(level) else left
-            nxt.append(blake3.blake3(left + right).digest())
-        level = nxt
-    return level[0]
-
-
-def _merkle_tree_mldsa44(leaves: List[bytes]) -> bytes:
-    """Post-quantum tree: domain-separated, odd-leaf promotion (RFC 6962)."""
-    if not leaves:
-        return bytes.fromhex(EMPTY_ROOT_MLDSA44)
-    if len(leaves) == 1:
-        return leaves[0]
+        return bytes.fromhex(EMPTY_ROOT)
     level = list(leaves)
     while len(level) > 1:
         nxt: List[bytes] = []
         i = 0
-        while i < len(level) - 1:
+        while i + 1 < len(level):
             nxt.append(blake3.blake3(b"\x01" + level[i] + level[i + 1]).digest())
             i += 2
         if i < len(level):
@@ -133,85 +152,28 @@ def _merkle_tree_mldsa44(leaves: List[bytes]) -> bytes:
     return level[0]
 
 
-def compute_merkle_root(shard_root: Path, suite: str = "ed25519") -> str:
-    """Compute the BLAKE3 Merkle root for the shard.
+def compute_merkle_root(shard_root: Path) -> str:
+    """Compute the shard Merkle root (spec section 8).
 
-    Spec: exclude manifest.json and sig/*.
-    Hardening: refuse symlinks and enforce file/total size limits.
-
-    Args:
-        shard_root: Shard directory path.
-        suite: "ed25519" or "axm-blake3-mldsa44".
-
-    Returns: 64-hex Merkle root.
+    leaf = BLAKE3(0x00 || relpath_utf8 || 0x00 || file_bytes)
     """
     files = _collect_and_validate_files(shard_root)
-
-    if suite == "axm-blake3-mldsa44":
-        leaves: List[bytes] = []
-        for rel, fp in files:
-            h = blake3.blake3()
-            h.update(b"\x00")  # domain: leaf
-            h.update(rel.encode("utf-8"))
-            h.update(b"\x00")
-            with fp.open("rb") as f:
-                while True:
-                    chunk = f.read(HASH_CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    h.update(chunk)
-            leaves.append(h.digest())
-        return _merkle_tree_mldsa44(leaves).hex()
-    else:
-        leaves = []
-        for rel, fp in files:
-            h = blake3.blake3()
-            h.update(rel.encode("utf-8"))
-            h.update(b"\x00")
-            with fp.open("rb") as f:
-                while True:
-                    chunk = f.read(HASH_CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    h.update(chunk)
-            leaves.append(h.digest())
-        return _merkle_tree_legacy(leaves).hex()
+    leaves: List[bytes] = []
+    for rel, fp in files:
+        h = blake3.blake3()
+        h.update(b"\x00")
+        h.update(rel.encode("utf-8"))
+        h.update(b"\x00")
+        with fp.open("rb") as f:
+            while True:
+                chunk = f.read(HASH_CHUNK_SIZE)
+                if not chunk:
+                    break
+                h.update(chunk)
+        leaves.append(h.digest())
+    return _merkle_root(leaves).hex()
 
 
-def verify_manifest_signature(
-    manifest_data: Union[Path, bytes],
-    sig_path: Path,
-    pubkey_path: Path,
-    suite: str = "ed25519",
-) -> bool:
-    """Verify signature over manifest bytes.
-
-    Suite-aware: dispatches to Ed25519 or ML-DSA-44 based on suite field.
-    """
-    if not sig_path.exists() or not pubkey_path.exists():
-        return False
-
-    if isinstance(manifest_data, Path):
-        if not manifest_data.exists():
-            return False
-        manifest_bytes = manifest_data.read_bytes()
-    else:
-        manifest_bytes = manifest_data
-
-    sig = sig_path.read_bytes()
-    pub = pubkey_path.read_bytes()
-
-    expected = SUITE_SIZES.get(suite, SUITE_SIZES["ed25519"])
-    if len(pub) != expected["pk"]:
-        return False
-    if len(sig) != expected["sig"]:
-        return False
-
-    if suite == "axm-blake3-mldsa44":
-        return _mldsa44_verify(pub, manifest_bytes, sig)
-    else:
-        try:
-            VerifyKey(pub).verify(manifest_bytes, sig)
-            return True
-        except (BadSignatureError, ValueError):
-            return False
+def derive_shard_id(manifest_bytes: bytes) -> str:
+    """shard_id = "sh1_" + hex(BLAKE3(manifest_bytes)) — derived, never stored."""
+    return "sh1_" + blake3.blake3(manifest_bytes).hexdigest()

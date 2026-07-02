@@ -15,12 +15,12 @@ actually requires.
 
 ---
 
-## Remediation status (2026-07-01)
+## Remediation status (updated 2026-07-02, RFC 0002 implementation)
 
-Status of the headline findings after the first remediation change set. The
-report body below is unchanged and still describes the state *at audit time*;
-this table is the only part that tracks fixes. Findings not listed here
-remain open.
+Status of the headline findings after the first remediation change set
+(2026-07-01) and the RFC 0002 v1.0 reset (2026-07-02). The report body below
+is unchanged and still describes the state *at audit time*; this table is
+the only part that tracks fixes. Findings not listed here remain open.
 
 | Finding | Where | Status |
 |---|---|---|
@@ -30,11 +30,12 @@ remain open.
 | Verifier under-enforces the manifest schema (§3.1) | `src/axm_verify/logic.py` | **Enforced** — spec §5.2 required fields now validated, `E_MANIFEST_SCHEMA` names the offending field |
 | Hardcoded gold-shard signing key (§2.1) | `src/axm_build/cli.py`, `shards/gold/README.md`, `keys/README.md` | **Removed from the CLI** (signing now requires `--private-key` / `AXM_SIGNING_KEY_HEX`); the gold shard's zero-authentication-value caveat is documented where the key and shard live |
 | Paper §6.3.3 Merkle description wrong (§1.5) | `docs/ERRATA.md` Erratum 1, `papers/README.md` | **Erratum published** — correct construction reproduced; paper README points readers to it. Paper v0.7 fix still pending |
-| Unicode version unpinned (§3.3) | `docs/ERRATA.md` Erratum 2, `rfcs/0003-spec-v1-1-pinning-clarifications.md` | **Erratum + RFC 0003** — `tests/vectors/identity.json` declared the normative anchor; spec v1.1 pinning proposed. Spec text itself unchanged (frozen) |
-| Parquet subset unpinned (§3.2) | `docs/ERRATA.md` Erratum 3, `rfcs/0003-spec-v1-1-pinning-clarifications.md` | **Erratum + RFC 0003** — de-facto subset recorded; spec v1.1 pinning proposed. Spec text itself unchanged (frozen) |
+| Unicode version unpinned (§3.3) | `spec/v1/SPECIFICATION.md` §10.1, `tests/vectors/identity.json` | **Done** — RFC 0002 D4: `canonicalize()` is Unicode-version-independent (ASCII-only lowercasing, enumerated whitespace set, NFC pinned at 15.1.0 under the stability policy), locked by adversarial identity vectors. Supersedes Erratum 2's interim anchor and RFC 0003 |
+| Parquet subset unpinned (§3.2) | `spec/v1/SPECIFICATION.md` §11 | **Done (moot)** — RFC 0002 D2 removed Parquet from the shard entirely; core tables are canonical JSONL and pyarrow left the kernel dependencies. Supersedes Erratum 3 and RFC 0003 |
+| Quantum-vulnerable suite declared "valid indefinitely" (§2.2) | `spec/v1/SPECIFICATION.md` §7, `shards/gold/fm21-11-hemorrhage-v2/` | **Done (provisional)** — RFC 0002 D1: single hybrid suite `axm-hybrid1` (Ed25519 ‖ ML-DSA-44, both must verify); legacy suites deleted; gold shard v2 minted under it. Provisional until the ceremony re-signs it (`RELEASE.md` steps 1–2) |
 | Key rotation / trust store (§2.3) | — | **Open** |
-| Timestamping / PQ attestation of the gold shard (§2.2, §2.4) | — | **Open** |
-| Release engineering: tags, releases, PyPI, SWH/Zenodo (§4.1) | — | **Open** |
+| Key ceremony + timestamping / PQ attestation of gold v2 (§2.1, §2.2, §2.4) | `RELEASE.md`, `attestations/` | **Open — runbook written** — v0.x manifest already attested (RFC 3161 + OTS, 2026-07-02); the ceremony key, v2 re-mint, and v2 attestations are `RELEASE.md` steps 1–4, maintainer-only |
+| Release engineering: tags, releases, PyPI, SWH/Zenodo (§4.1) | `RELEASE.md` | **Open — runbook written** — signed v1.0.0 tag, GitHub release with checksums, PyPI (trusted publishing), Zenodo DOI are `RELEASE.md` steps 5–8, maintainer-only |
 | Independent second implementation (§5) | — | **Open** |
 
 ---
@@ -383,6 +384,14 @@ gone, the hardware-attestation claim was unverifiable forever.
 `claude/attestation-evidence-shard-odrb80`). The mechanism is the two-pass
 reseal: everything under `ext/` is Merkle-covered, and the frozen kernel
 treats `ext/` as opaque (spec §10), so the fix required zero kernel changes.
+
+> *Post-RFC-0002 note.* The enabler tables below name `ext/*.parquet`
+> files as axm-sfn ships them today. Under spec/v1 the kernel treats
+> `ext/` as opaque and Merkle-covers whatever bytes are there, so a spoke
+> may ship Parquet extensions; the kernel-registry extensions
+> (`lineage@1`, `references@1`, `temporal@1`, `locators@1`) are canonical
+> JSONL. Reseal authorization (§6.3) is now proposed as
+> [RFC 0004](../rfcs/0004-reseal-authorization.md).
 
 ### 6.2 The five enablers
 

@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict
+
+from .jsonl import canonical_json_bytes
 
 
 def dumps_canonical_json(obj: Dict[str, Any]) -> bytes:
-    """Canonical JSON encoding for normative artifacts.
+    """Canonical JSON encoding for normative artifacts (spec section 5).
 
-    Must match: json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    and must be UTF-8 encoded.
+    manifest.json is exactly these bytes — no trailing newline, no BOM.
     """
-    s = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return s.encode("utf-8")
-
-
-# Backward-compatible alias
-canonical_manifest_json = dumps_canonical_json
+    return canonical_json_bytes(obj)

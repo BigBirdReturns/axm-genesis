@@ -1,0 +1,24 @@
+{
+  "canonicalization": [
+    {"input": "  Hello  World  ", "expected": "hello world"},
+    {"input": "STRASSE", "expected": "strasse"},
+    {"input": "A  B   C", "expected": "a b c"},
+    {"input": "  mixed\tWHITESPACE\nhere ", "expected": "mixed whitespace here"},
+    {"input": "Null\u0000Byte", "expected_error": "ValueError"}
+  ],
+  "entity_ids": [
+    {"namespace": "survival/medical", "label": "tourniquet", "expected_id": "e_k6igl4utryn6jl2th7bmpluq"},
+    {"namespace": "survival/medical", "label": "pressure dressing", "expected_id": "e_rn3yprztdgvg7lpjqtealf33"},
+    {"namespace": "survival/medical", "label": "severe bleeding", "expected_id": "e_7fr5ezvpq7k5ovatswocd7ly"},
+    {"namespace": "survival/medical", "label": "broken bone", "expected_id": "e_ic44h23ve5czflk5s63mabvo"}
+  ],
+  "claim_ids": [
+    {
+      "subject": "e_k6igl4utryn6jl2th7bmpluq",
+      "predicate": "treats",
+      "object": "e_7fr5ezvpq7k5ovatswocd7ly",
+      "object_type": "entity",
+      "expected_id": "c_2dwwu5etorhw6ccwxvxj63lf"
+    }
+  ]
+}
