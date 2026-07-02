@@ -125,6 +125,20 @@ REQUIRED_EVIDENCE_FILES = {"spans.parquet"}
 
 KNOWN_SUITES = {"ed25519", "axm-blake3-mldsa44"}
 
+# Manifest spec_version values this verifier accepts (spec section 5.2).
+# "1.0.0" manifests must carry license.spdx; "1.1.0" manifests may omit it.
+KNOWN_SPEC_VERSIONS = {"1.0.0", "1.1.0"}
+
+# Exit-code contract (COMPATIBILITY.md section 4): a verification failure
+# where EVERY reported error code is in this set means the shard directory
+# is structurally malformed (missing required files/dirs) → CLI exits 2.
+# Any other failure → CLI exits 1.
+MALFORMED_SHARD_CODES = frozenset({
+    ErrorCode.E_LAYOUT_MISSING.value,
+    ErrorCode.E_SCHEMA_MISSING.value,
+    ErrorCode.E_SIG_MISSING.value,
+})
+
 SUITE_SIZES = {
     "ed25519": {"pk": 32, "sig": 64},
     "axm-blake3-mldsa44": {"pk": 1312, "sig": 2420},

@@ -26,7 +26,6 @@ from axm_build.manifest import dumps_canonical_json
 from axm_build.merkle import compute_merkle_root
 
 HASH_CHUNK_SIZE = 64 * 1024
-CANONICAL_TEST_PRIVATE_KEY = bytes.fromhex("a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
 
 
 def _sha256_file(path: Path) -> str:
@@ -253,7 +252,7 @@ def _compile_from_candidates(
        "evidence":{"source_file":"...", "byte_start":N, "byte_end":N, "text":"..."}}
     """
     from axm_build.sign import (
-        SUITE_ED25519, SUITE_MLDSA44,
+        SUITE_MLDSA44,
         signing_key_from_private_key_bytes, mldsa44_sign,
     )
 
@@ -450,9 +449,46 @@ def main() -> None:
 @main.command("gold-fm21-11")
 @click.argument("source_md", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("outdir", type=click.Path(path_type=Path))
-@click.option("--private-key", default="a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3")
-def gold_cmd(source_md: Path, outdir: Path, private_key: str) -> None:
+@click.option(
+    "--private-key",
+    envvar="AXM_SIGNING_KEY_HEX",
+    show_envvar=True,
+    default=None,
+    metavar="HEX64",
+    help=(
+        "REQUIRED. Ed25519 signing key seed as exactly 64 hex characters. "
+        "Falls back to the AXM_SIGNING_KEY_HEX environment variable. "
+        "There is deliberately no default: the key formerly hardcoded here "
+        "was published in this repository, so signatures made with it prove "
+        "integrity only, never authenticity."
+    ),
+)
+def gold_cmd(source_md: Path, outdir: Path, private_key: str | None) -> None:
     """Build the FM 21-11 gold shard (Ed25519, frozen)."""
+    if not private_key:
+        raise click.ClickException(
+            "No signing key provided. Pass --private-key <64-hex-chars> or set the "
+            "AXM_SIGNING_KEY_HEX environment variable.\n"
+            "There is no default signing key: the key this tool historically "
+            "defaulted to is public (its private half was published in this "
+            "repository), so anything signed with it proves integrity, not "
+            "authenticity. Generate your own key, e.g.:\n"
+            '  python -c "from nacl.signing import SigningKey; '
+            'print(bytes(SigningKey.generate()).hex())"'
+        )
+    private_key = private_key.strip()
+    if len(private_key) != 64:
+        raise click.ClickException(
+            f"--private-key must be exactly 64 hex characters "
+            f"(32-byte Ed25519 seed), got {len(private_key)} characters."
+        )
+    try:
+        bytes.fromhex(private_key)
+    except ValueError:
+        raise click.ClickException(
+            "--private-key is not valid hex: expected exactly 64 hexadecimal "
+            "characters (32-byte Ed25519 seed)."
+        )
     manifest = _build_gold_shard(source_md, outdir, private_key)
     click.echo(json.dumps(manifest, indent=2, ensure_ascii=False))
     click.echo(f"\nGold shard written to {outdir}")

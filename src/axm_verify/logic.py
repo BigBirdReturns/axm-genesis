@@ -19,6 +19,7 @@ from .const import (
     ENTITIES_SCHEMA, CLAIMS_SCHEMA, PROVENANCE_SCHEMA, SPANS_SCHEMA,
     VALID_OBJECT_TYPES, VALID_TIERS,
     REQUIRED_ROOT_ITEMS,
+    KNOWN_SUITES, KNOWN_SPEC_VERSIONS,
 )
 from .identity import recompute_entity_id, recompute_claim_id
 from .crypto import compute_merkle_root, verify_manifest_signature
@@ -116,6 +117,11 @@ def _validate_root_layout(root: Path, errors: List[Dict[str, str]]) -> bool:
 
 
 def _read_manifest(manifest_bytes: bytes, errors: List[Dict[str, str]]) -> Dict[str, Any]:
+    """Parse manifest.json and enforce spec section 5.2 (required fields).
+
+    Runs BEFORE signature verification so a malformed manifest reports
+    E_MANIFEST_SCHEMA (naming the offending field), not a signature error.
+    """
     try:
         data = json.loads(manifest_bytes)
     except json.JSONDecodeError:
@@ -125,13 +131,79 @@ def _read_manifest(manifest_bytes: bytes, errors: List[Dict[str, str]]) -> Dict[
         _err(errors, ErrorCode.E_MANIFEST_SCHEMA, f"Cannot parse manifest.json: {e}")
         return {}
 
-    integ = data.get("integrity", {})
-    if not isinstance(integ, dict):
-        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "manifest.integrity must be an object")
+    if not isinstance(data, dict):
+        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "manifest must be a JSON object")
         return {}
-    merkle = integ.get("merkle_root")
-    if not _is_hex_64(merkle):
-        _err(errors, ErrorCode.E_MANIFEST_SCHEMA, "manifest.integrity.merkle_root must be 64 hex chars")
+
+    field_errors: List[str] = []
+
+    def bad(field: str, why: str) -> None:
+        field_errors.append(f"manifest.{field} {why}")
+
+    spec_version = data.get("spec_version")
+    if not isinstance(spec_version, str) or spec_version not in KNOWN_SPEC_VERSIONS:
+        bad("spec_version", f"must be one of {sorted(KNOWN_SPEC_VERSIONS)}, got {spec_version!r}")
+
+    if not isinstance(data.get("shard_id"), str):
+        bad("shard_id", "must be a string")
+
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        bad("metadata", "must be an object")
+    else:
+        for f in ("title", "namespace", "created_at"):
+            if not isinstance(metadata.get(f), str):
+                bad(f"metadata.{f}", "must be a string")
+
+    publisher = data.get("publisher")
+    if not isinstance(publisher, dict):
+        bad("publisher", "must be an object")
+    else:
+        for f in ("id", "name"):
+            if not isinstance(publisher.get(f), str):
+                bad(f"publisher.{f}", "must be a string")
+
+    # license.spdx is required by the 1.0.0 spec; 1.1.0 manifests may omit license.
+    if spec_version == "1.0.0":
+        lic = data.get("license")
+        if not isinstance(lic, dict) or not isinstance(lic.get("spdx"), str):
+            bad("license.spdx", "must be a string (required when spec_version is 1.0.0)")
+
+    sources = data.get("sources")
+    if not isinstance(sources, list) or not sources:
+        bad("sources", "must be a non-empty array")
+    else:
+        for i, src in enumerate(sources):
+            if not isinstance(src, dict):
+                bad(f"sources[{i}]", "must be an object")
+                continue
+            path = src.get("path")
+            if not isinstance(path, str) or not path.startswith("content/"):
+                bad(f"sources[{i}].path", 'must be a string starting with "content/"')
+            if not _is_hex_64(src.get("hash")):
+                bad(f"sources[{i}].hash", "must be 64 hex chars")
+
+    integ = data.get("integrity")
+    if not isinstance(integ, dict):
+        bad("integrity", "must be an object")
+    else:
+        if integ.get("algorithm") != "blake3":
+            bad("integrity.algorithm", 'must equal "blake3"')
+        if not _is_hex_64(integ.get("merkle_root")):
+            bad("integrity.merkle_root", "must be 64 hex chars")
+
+    stats = data.get("statistics")
+    if not isinstance(stats, dict):
+        bad("statistics", "must be an object")
+    else:
+        for f in ("entities", "claims"):
+            v = stats.get(f)
+            if not isinstance(v, int) or isinstance(v, bool):
+                bad(f"statistics.{f}", "must be an integer")
+
+    if field_errors:
+        for msg in field_errors:
+            _err(errors, ErrorCode.E_MANIFEST_SCHEMA, msg)
         return {}
 
     return data
@@ -336,7 +408,7 @@ def verify_shard(shard_path: str | Path, trusted_key_path: Path, mode: str = "st
 
     # Determine suite: if manifest has "suite" field, use it. Otherwise legacy ed25519.
     suite = manifest.get("suite", "ed25519")
-    if suite not in ("ed25519", "axm-blake3-mldsa44"):
+    if suite not in KNOWN_SUITES:
         _err(errors, ErrorCode.E_MANIFEST_SCHEMA, f"Unknown suite: {suite}")
         return {"shard": str(shard_path), "status": "FAIL", "error_count": len(errors), "errors": errors}
 

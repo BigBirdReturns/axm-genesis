@@ -1,0 +1,8 @@
+b5f9d2848c5ebb279da7f1021674909f30f6b7912faafd2a98f00a11bc5bb04c  shards/gold/fm21-11-hemorrhage-v1/content/source.txt
+8aa2d3bebce7d557960ab92171a8da86831172e5c7ec98e8f43fd8b9ab00030a  shards/gold/fm21-11-hemorrhage-v1/evidence/spans.parquet
+6013e0c2720a11c02394c6ecc14f1db8375949f7d8d0efe8babb402dffe058fb  shards/gold/fm21-11-hemorrhage-v1/graph/claims.parquet
+51616e2a93b7eb8ecc42502a985b998fb75850c9354dff58c3ab0987f214fd9c  shards/gold/fm21-11-hemorrhage-v1/graph/entities.parquet
+3110a47d8a7e531877a43b87abb34fcdb2e6138d0a18007224e065c02e339fe3  shards/gold/fm21-11-hemorrhage-v1/graph/provenance.parquet
+e267a94f4c1164b007da88d24f05e75bc5c00984d2ada37cfb84b13e87e8fa30  shards/gold/fm21-11-hemorrhage-v1/manifest.json
+b8b98238c166d8efd081822d787be867b80198eca16c716f17ecb4e7e114798e  shards/gold/fm21-11-hemorrhage-v1/sig/manifest.sig
+b96daf31147223ad2571c61ad300bac5d1568e63122f5f84469c49d5ef628110  shards/gold/fm21-11-hemorrhage-v1/sig/publisher.pub

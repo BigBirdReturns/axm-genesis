@@ -5,10 +5,7 @@ These stubs do NOT produce correct outputs — they exist to let
 logic and schema tests run without binary deps installed.
 """
 import hashlib
-import json
-import struct
 import sqlite3
-from pathlib import Path
 
 
 class _Blake3Stub:
@@ -80,7 +77,8 @@ def install_stubs():
         nacl = types.ModuleType("nacl")
         nacl_sig = types.ModuleType("nacl.signing")
         nacl_exc = types.ModuleType("nacl.exceptions")
-        class BadSig(Exception): pass
+        class BadSig(Exception):
+            pass
         nacl_exc.BadSignatureError = BadSig
         sys.modules["nacl"] = nacl
         sys.modules["nacl.signing"] = nacl_sig
