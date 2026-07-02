@@ -11,6 +11,7 @@ that produced each freeze survives alongside the freeze itself.
 | [0001](0001-post-quantum-suite.md) | Post-Quantum Cryptographic Suite | **IMPLEMENTED** | Added `axm-blake3-mldsa44` (ML-DSA-44, domain-separated Merkle, RFC 6962); legacy Ed25519 shards verify unchanged |
 | [0002](0002-v1-reset.md) | The v1.0 Reset — Freeze Once, Freeze Right | **IMPLEMENTED** (accepted 2026-07-02 (UTC); pending ceremony + tag) | Hybrid suite `axm-hybrid1` (Ed25519 ‖ ML-DSA-44, both must verify); canonical JSONL core tables; ASCII-only lowercasing in `canonicalize()`; naming as proposed (`sh1_`, `e1_`, `c1_`, `p1_`, `s1_`). Spec/v1, kernel, vectors, provisional gold v2 landed; key ceremony and v1.0.0 tag remain (RELEASE.md) |
 | [0003](0003-spec-v1-1-pinning-clarifications.md) | Spec v1.1 Pinning Clarifications | **SUPERSEDED** by 0002 | Fallback path not needed once the reset was accepted |
+| [0004](0004-reseal-authorization.md) | Reseal Authorization Semantics | **PROPOSED** | Additive reseal, provable key succession, pre-anchored original root — must be accepted before the first real reseal (DURABILITY §6.3) |
 
 ## The template this sets
 

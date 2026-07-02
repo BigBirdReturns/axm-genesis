@@ -349,11 +349,116 @@ Concrete program:
 
 ---
 
+## 6. Phase 3/4 enablers — evidence that must enter the format before it fossilizes
+
+*Added 2026-07-02. This section is the migration-readiness addendum for the
+fabrication spoke (axm-sfn) and, by extension, any spoke that embeds
+hardware-attestation evidence. Cross-repo references to axm-sfn are
+non-normative (see §4.4); the normative artifacts are the shard bytes and
+the vector corpus.*
+
+The 30-year plan is phased: **Phase 0** freezes a golden corpus of test
+vectors as the conformance contract (§5.2); **Phase 3** is suite succession —
+resealing already-sealed shards under stronger signature suites as old ones
+weaken; **Phase 4** is the post-break regime, where verification of legacy
+evidence rests on "provably sealed before the break" rather than on the
+broken algorithm itself. Phases 3 and 4 only work if certain hooks exist in
+the format *before* the first production shards fossilize it. Five were
+identified; all are format-and-evidence decisions that cost almost nothing
+before the first production shard and become migration projects after.
+
+### 6.1 The correction: sealed-before-break was not true for TPM evidence
+
+An earlier draft of the migration plan claimed that an RSA break in 2040
+could not forge a 2026 fabrication shard because the TPM's RSA signatures
+live inside the ML-DSA-sealed shard. **At audit time this was false.** The
+AXLR payload carried only the BLAKE3 chain link, the SHA-256 digest, a
+verdict byte, a `tpm_present` flag, and the sequence number; the actual TPM
+signatures, quotes (PCR evidence), AK public key, and EK certificate chain
+stayed behind in the spoke's hot buffer (`buffer.db`) — which by nature gets
+pruned. A verifier holding only a sealed shard could verify the BLAKE3 chain
+and the ML-DSA seal but not a single TPM signature; once the buffer was
+gone, the hardware-attestation claim was unverifiable forever.
+
+**Status: fixed in the axm-sfn spoke** (branch
+`claude/attestation-evidence-shard-odrb80`). The mechanism is the two-pass
+reseal: everything under `ext/` is Merkle-covered, and the frozen kernel
+treats `ext/` as opaque (spec §10), so the fix required zero kernel changes.
+
+> *Post-RFC-0002 note.* The enabler tables below name `ext/*.parquet`
+> files as axm-sfn ships them today. Under spec/v1 the kernel treats
+> `ext/` as opaque and Merkle-covers whatever bytes are there, so a spoke
+> may ship Parquet extensions; the kernel-registry extensions
+> (`lineage@1`, `references@1`, `temporal@1`, `locators@1`) are canonical
+> JSONL. Reseal authorization (§6.3) is now proposed as
+> [RFC 0004](../rfcs/0004-reseal-authorization.md).
+
+### 6.2 The five enablers
+
+| # | Enabler | Status |
+|---|---|---|
+| 1 | **Attestation evidence inside the seal.** `ext/attestation@1.parquet` carries per-packet TPM signatures, quote records (PCR selections, nonces, attest blobs), the AK and signing-key public areas, and the EK certificate chain. | **Implemented** (axm-sfn) |
+| 2 | **Algorithm and key identifiers at every layer.** The AXLR payload's reserved bytes now carry `attestation_class`, `sig_alg`, and a 32-byte signing-key fingerprint (SHA-256 over the stored public-area bytes), so a 2045 verifier knows what to try and which key covers each record. Identifier values are frozen once assigned. | **Implemented** (axm-sfn) |
+| 3 | **Hash-over-stored-bytes, not hash-over-recomputable-canonicalization.** `ext/packets@1.parquet` ships the verbatim canonical packet bytes; the rule is `packet_sha256 == SHA-256(stored bytes)`. No future reimplementer ever has to reproduce Go's `encoding/json` float formatting. This also makes the full BLAKE3 custody chain recomputable from the shard alone. | **Implemented** (axm-sfn) |
+| 4 | **Reseal authorization semantics.** Defined in §6.3 below; needs an RFC before the first real reseal. | **Policy drafted here** |
+| 5 | **Anchoring starts now, not at Phase 3.** Defined in §6.4 below. | **Pattern established** (`attestations/`), cadence pending |
+
+Dependency note: enablers 1–3 change what goes into a shard, so they land
+**before** the Phase 0 golden corpus is generated — otherwise the frozen
+test vectors bake in the evidence gap.
+
+### 6.3 What makes a reseal authorized (Phase 3 semantics)
+
+The two-pass reseal (recompute Merkle root, re-sign manifest) is the Phase 3
+primitive; what was missing is the rule distinguishing an *authorized* 2035
+reseal under ML-DSA-87 from "someone re-signed it." Three requirements,
+to be formalized as an RFC before first use:
+
+1. **Additive, never destructive.** A reseal retains the original manifest,
+   signature, and suite identifier as sealed artifacts (e.g.
+   `sig/manifest.sig.v1`, superseded manifest under `ext/` or a lineage
+   entry) — it wraps the old seal, it does not replace it. The original
+   signature is evidence; destroying it during migration converts the shard
+   from "provably sealed in 2026" to "asserted to have been sealed in 2026."
+2. **Key succession must be provable.** The resealing key must trace to the
+   original publisher key through a chain of cross-signed rotation
+   statements (the trust-store/rotation RFC of §2.3; rotation statements are
+   themselves naturally shards). A reseal signed by an unrelated key is a
+   *re-publication*, not a reseal.
+3. **The old root must be anchored.** A reseal is only as good as the proof
+   that the original bytes predate the reseal. Which is why §6.4 cannot
+   wait for Phase 3.
+
+### 6.4 Anchoring policy: every unanchored year is irreversible
+
+Timestamps prove *sealed-before-break*; signatures alone never do (§2.4).
+Re-anchoring only proves seal time forward from when anchoring starts, and a
+shard's `created_at` is self-asserted — so every year of unanchored
+production shards is a year whose evidence can never be strengthened later.
+This is the cheapest item in the table and the only one where delay is
+irreversible.
+
+The pattern already exists: `attestations/` carries RFC 3161 and
+OpenTimestamps proofs over the gold manifest. Extend it to production:
+
+- Every compiled shard already has a canonical `shard_id`
+  (`shard_blake3_<merkle_root>`), so anchoring needs no format change.
+- Publishers batch shard Merkle roots (a digest list, or a Merkle root over
+  roots) and submit to **at least two independent venues** (an RFC 3161 TSA
+  and OpenTimestamps) on a fixed cadence — daily is cheap; per-shard is
+  fine at fabrication volumes.
+- Proofs are stored outside the shard (they postdate the seal) but inside
+  the publisher's archive, and renewed per the re-timestamping policy of
+  §2.4 (RFC 4998 spirit).
+- The annual durability review (§5.3) verifies that the cadence held.
+
+---
+
 ## Priority summary
 
 | Horizon | Actions |
 |---|---|
 | **This week** | Fix test pollution (1.1) · Add CI incl. gold-shard job (1.2) · Rewrite COMPATIBILITY.md (1.3) · Sync versions (1.4) |
 | **This quarter** | Timestamp + PQ-attest the gold shard (2.1–2.2) · Tag/release/PyPI/SWH/Zenodo (4.1) · Close spec/verifier manifest gap + new vectors (3.1) · SECURITY.md + second maintainer (4.2) · Correct paper §6.3.3 in v0.7 (1.5) |
-| **This year** | Key-rotation/trust-store RFC (2.3) · Re-timestamping policy RFC (2.4) · Pin Parquet subset + Unicode version (3.2–3.3) · Lockfile per release (4.3) · Repo hygiene (4.4–4.5) |
+| **This year** | Key-rotation/trust-store RFC (2.3) · Re-timestamping policy RFC (2.4) · Reseal-authorization RFC (6.3) · Production anchoring cadence (6.4) · Pin Parquet subset + Unicode version (3.2–3.3) · Lockfile per release (4.3) · Repo hygiene (4.4–4.5) |
 | **Ongoing** | Independent second verifier (5.1) · Vector corpus growth (5.2) · Annual durability review (5.3) |
