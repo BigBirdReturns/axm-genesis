@@ -546,10 +546,10 @@
       </div>
       <div class="header-meta animate-up delay-2">
         <div class="version-block">
-          <div>VERSION <span class="val">1.2.0</span></div>
-          <div>SPEC <span class="val">v1.0.0 FROZEN</span></div>
-          <div>SUITE <span class="val">axm-blake3-mldsa44</span></div>
-          <div>GOLD SHARD <span class="val">fm21-11-hemorrhage-v1</span></div>
+          <div>VERSION <span class="val">1.0.0rc1</span></div>
+          <div>SPEC <span class="val">v1.0.0 (RFC 0002)</span></div>
+          <div>SUITE <span class="val">axm-hybrid1</span></div>
+          <div>GOLD SHARD <span class="val">fm21-11-hemorrhage-v2</span></div>
           <div>LICENSE <span class="val">Apache-2.0</span></div>
         </div>
       </div>
@@ -586,13 +586,13 @@
         <p><strong>Tamper-evident by construction.</strong> Every byte in a shard is covered by a BLAKE3 Merkle tree. The root is signed post-quantum. Tamper any byte — content, graph, evidence, or extension — and verification fails. There is no escape hatch.</p>
       </div>
       <div class="manifesto-item" data-num="II">
-        <p><strong>The spec is frozen.</strong> <code>spec/v1.0/SPECIFICATION.md</code> is normative and sealed. Changes require an RFC in <code>rfcs/</code>, a new spec version, and a migration path. Minor versions add; they never remove.</p>
+        <p><strong>The spec is frozen.</strong> <code>spec/v1/SPECIFICATION.md</code> is normative and sealed at the v1.0.0 tag. Changes require an RFC in <code>rfcs/</code>; a breaking change means a new major format, never a mutation of this one. Profiles and extensions add; the kernel never changes.</p>
       </div>
       <div class="manifesto-item" data-num="III">
-        <p><strong>The gold shard is the definition of correctness.</strong> <code>fm21-11-hemorrhage-v1</code> is never recompiled. A verifier change that breaks the gold shard is rejected — the gold shard wins. CI enforces this on every commit.</p>
+        <p><strong>The gold shard is the definition of correctness.</strong> <code>fm21-11-hemorrhage-v2</code> is never recompiled. A verifier change that breaks the gold shard is rejected — the gold shard wins. CI enforces this on every commit.</p>
       </div>
       <div class="manifesto-item" data-num="IV">
-        <p><strong>Post-quantum by default.</strong> New shards use ML-DSA-44 (FIPS 204). Ed25519 shards remain valid indefinitely — backward compatibility is a hard requirement. Cryptographic agility is handled through suite identifiers, not protocol breaks.</p>
+        <p><strong>Hybrid post-quantum.</strong> One suite: <code>axm-hybrid1</code> — Ed25519 ‖ ML-DSA-44 (FIPS 204), and verification succeeds only if <em>both</em> components verify. A future break of either algorithm, quantum or cryptanalytic, leaves the other holding.</p>
       </div>
     </div>
   </div>
@@ -609,33 +609,33 @@
     <div class="primitives-grid animate-up delay-2">
       <div class="primitive-card">
         <span class="prim-icon">⬡</span>
-        <h3>BLAKE3 Merkle Trees</h3>
-        <p>Two constructions: legacy duplicate-odd-leaf (Ed25519) and domain-separated RFC 6962 odd-leaf promotion (ML-DSA-44). Leaf: <code>BLAKE3(0x00 ‖ path ‖ 0x00 ‖ bytes)</code>. Node: <code>BLAKE3(0x01 ‖ left ‖ right)</code>. Sorted by UTF-8 path.</p>
+        <h3>BLAKE3 Merkle Tree</h3>
+        <p>One construction, forever: domain-separated with RFC 6962 odd-node promotion. Leaf: <code>BLAKE3(0x00 ‖ path ‖ 0x00 ‖ bytes)</code>. Node: <code>BLAKE3(0x01 ‖ left ‖ right)</code>. Sorted by UTF-8 path. Empty root: <code>BLAKE3(0x01)</code>.</p>
       </div>
       <div class="primitive-card">
         <span class="prim-icon">◈</span>
-        <h3>ML-DSA-44 Signatures</h3>
-        <p>FIPS 204 post-quantum signature (Dilithium2). Deterministic: same key and message always produce the same signature. pk=1312 B, sig=2420 B. Identified by suite field <code>axm-blake3-mldsa44</code> in manifest.</p>
+        <h3>Hybrid Signatures</h3>
+        <p>The <code>axm-hybrid1</code> suite: Ed25519 ‖ ML-DSA-44 (FIPS 204). pk = 1344 B, sig = 2484 B, and <em>both</em> components must verify over the domain-separated message <code>"axm-genesis/v1/manifest" ‖ 0x00 ‖ manifest</code>.</p>
       </div>
       <div class="primitive-card">
         <span class="prim-icon">▦</span>
-        <h3>Parquet + DuckDB</h3>
-        <p>All graph, evidence, and extension tables are Apache Parquet with explicit Arrow schemas. Deterministically written — sorted, compressed with zstd. DuckDB queries extensions at query time with no central registry.</p>
+        <h3>Canonical JSONL Tables</h3>
+        <p>All graph and evidence tables are canonical JSONL — one canonical-JSON record per line, sorted bytewise by primary key, reproducible byte-for-byte in any language. Parquet is demoted to a derived, local query cache outside the shard.</p>
       </div>
       <div class="primitive-card">
         <span class="prim-icon">⟳</span>
         <h3>Lineage + References</h3>
-        <p>Supersession chains via <code>ext/lineage&#64;1.parquet</code>. Cross-shard claim links via <code>ext/references&#64;1.parquet</code>. Both are Merkle-covered extension tables — optional, additive, and verifiable.</p>
+        <p>Supersession chains via <code>ext/lineage&#64;1.jsonl</code>. Cross-shard claim links via <code>ext/references&#64;1.jsonl</code>, binding to derived <code>sh1_</code> shard identities. Both are Merkle-covered extension tables — optional, additive, and verifiable.</p>
       </div>
       <div class="primitive-card">
         <span class="prim-icon">⊞</span>
-        <h3>Episodic Index</h3>
-        <p>Universal base pass produced by axm-chat distill: topic tags, named people, tools, project references, question text, resolution state, tone — written to <code>ext/episodes&#64;1.parquet</code>. DuckDB-queryable without an LLM.</p>
+        <h3>Content-Addressed IDs</h3>
+        <p>Every entity, claim, provenance row, and span is named by the full SHA-256 of its canonical preimage — base32, 52 chars, versioned prefixes <code>e1_ c1_ p1_ s1_</code>. Shard identity is <code>sh1_</code> + BLAKE3 of the manifest bytes, derived, never stored.</p>
       </div>
       <div class="primitive-card">
         <span class="prim-icon">⚙</span>
-        <h3>Engineering Lens</h3>
-        <p>Gated second pass for technical conversations. Extracts problem statement, graveyard of failed attempts, working solution, and architectural rules — written to <code>ext/engineering&#64;1.parquet</code>.</p>
+        <h3>Profiles</h3>
+        <p>Named, versioned check-sets over <code>content/</code> and <code>ext/</code> — e.g. <code>embodied&#64;1</code> for hot-stream continuity. Declared in the signed manifest; verifiers report them checked or unchecked, and unchecked never impersonates passed.</p>
       </div>
     </div>
   </div>
@@ -651,38 +651,37 @@
     <div class="shard-layout animate-up delay-1">
       <div>
         <div class="shard-tree">
-          <div><span class="dir">shard_blake3_&lt;merkle_root&gt;/</span></div>
+          <div><span class="dir">&lt;shard&gt;/</span> <span class="comment">← identity: sh1_ + BLAKE3(manifest)</span></div>
           <div>&nbsp;&nbsp;<span class="file">manifest.json</span> <span class="comment">← merkle root + suite</span></div>
           <div>&nbsp;&nbsp;<span class="dir">sig/</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">manifest.sig</span> <span class="comment">← ML-DSA-44 or Ed25519</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">publisher.pub</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">manifest.sig</span> <span class="comment">← Ed25519 ‖ ML-DSA-44 (2484 B)</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">publisher.pub</span> <span class="comment">← hybrid key (1344 B)</span></div>
           <div>&nbsp;&nbsp;<span class="dir">content/</span></div>
           <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">source.txt</span> <span class="comment">← byte-addressable</span></div>
           <div>&nbsp;&nbsp;<span class="dir">graph/</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">entities.parquet</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">claims.parquet</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">provenance.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">entities.jsonl</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">claims.jsonl</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">provenance.jsonl</span></div>
           <div>&nbsp;&nbsp;<span class="dir">evidence/</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">spans.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">spans.jsonl</span></div>
           <div>&nbsp;&nbsp;<span class="dir">ext/</span> <span class="comment">← optional, Merkle-covered</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">episodes&#64;1.parquet</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">engineering&#64;1.parquet</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">lineage&#64;1.parquet</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">references&#64;1.parquet</span></div>
-          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">temporal&#64;1.parquet</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">lineage&#64;1.jsonl</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">references&#64;1.jsonl</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">locators&#64;1.jsonl</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ext">temporal&#64;1.jsonl</span></div>
         </div>
         <div class="gold-callout">
           <div class="gold-accent"></div>
           <div class="gold-body">
             <h3>Gold Shard</h3>
-            <p>The reference shard <code>fm21-11-hemorrhage-v1</code>, extracted from FM 21-11 (US Army first aid field manual), is the definition of correctness. Any verifier that accepts it and rejects all invalid test vectors in <code>tests/vectors/shards/invalid/</code> is conformant.</p>
+            <p>The reference shard <code>fm21-11-hemorrhage-v2</code>, extracted from FM 21-11 (US Army first aid field manual) and minted under <code>axm-hybrid1</code>, is the definition of correctness. Any verifier that accepts it and rejects all invalid test vectors in <code>tests/vectors/shards/invalid/</code> is conformant.</p>
           </div>
         </div>
       </div>
       <div class="shard-fields">
         <div class="shard-field">
           <h3>Manifest Fields (Frozen)</h3>
-          <p>spec_version, shard_id, metadata, publisher, sources (with SHA-256 content hashes), integrity.merkle_root, statistics, and optional suite. Field names and types are frozen. New optional fields may be added in minor versions.</p>
+          <p>spec_version, suite (required: axm-hybrid1), metadata, publisher, license.spdx, sources (a bijection with content/, each file with its SHA-256), integrity.merkle_root, statistics — a closed key set, byte-exact canonical JSON. There is no shard_id field: identity is derived from the manifest hash.</p>
         </div>
         <div class="shard-field">
           <h3>Claims Schema (Frozen)</h3>
@@ -690,15 +689,15 @@
         </div>
         <div class="shard-field">
           <h3>Evidence Byte Offsets</h3>
-          <p>Every claim traces to exact bytes in content. spans.parquet records byte_start, byte_end, and text. Verification confirms <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">content_bytes[start:end].decode("utf-8") == text</code> for each span.</p>
+          <p>Every claim traces to exact bytes in content. spans.jsonl records byte_start, byte_end, and text. Verification confirms <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">content_bytes[start:end].decode("utf-8") == text</code> for each span.</p>
         </div>
         <div class="shard-field">
           <h3>Extension Naming</h3>
-          <p>Extensions follow the convention <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">ext/&lt;name&gt;&#64;&lt;version&gt;.parquet</code>. The &#64;&lt;version&gt; suffix is part of the name. Old verifiers treat ext/ as opaque — extensions never affect core verification.</p>
+          <p>Extensions follow the convention <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">ext/&lt;name&gt;&#64;&lt;version&gt;.&lt;suffix&gt;</code> — any format; AXM-defined extensions use canonical JSONL. The &#64;&lt;version&gt; suffix is part of the name. The kernel treats ext/ as opaque — extensions never affect core verification.</p>
         </div>
         <div class="shard-field">
-          <h3>REQ 5 — Non-Selective Recording</h3>
-          <p>Embodied spokes maintaining <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">content/cam_latents.bin</code> must preserve a gap-free AXLF/AXLR binary frame sequence. Any gap triggers <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">E_BUFFER_DISCONTINUITY</code>. Document shards pass silently.</p>
+          <h3>Profiles — e.g. embodied&#64;1</h3>
+          <p>Domain checks live outside the kernel. Shards declare <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">"profiles": ["embodied&#64;1"]</code> in the signed manifest; that profile enforces a gap-free AXLF/AXLR frame sequence in <code style="font-family:var(--mono);font-size:12px;color:var(--amber)">content/cam_latents.bin</code> (<code style="font-family:var(--mono);font-size:12px;color:var(--amber)">E_BUFFER_DISCONTINUITY</code>). Verifiers report unimplemented profiles as unchecked — never as passed.</p>
         </div>
       </div>
     </div>
@@ -712,7 +711,7 @@
       <span class="section-number">§ 04</span>
       <h2>Cryptographic Suites</h2>
     </div>
-    <p class="animate-up delay-1">Suite-aware since v1.1.0 (RFC 0001). The suite field in manifest.json selects the signing algorithm and Merkle construction. Absent means Ed25519 legacy.</p>
+    <p class="animate-up delay-1">One suite (RFC 0002). The suite field in manifest.json is required and must equal <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">axm-hybrid1</code>; there is no suite negotiation and no detection by key size.</p>
     <table class="suite-table animate-up delay-2">
       <thead>
         <tr>
@@ -726,30 +725,23 @@
       </thead>
       <tbody>
         <tr>
-          <td style="font-family:var(--mono);font-size:12px;color:var(--platinum)"><em>(absent)</em> or <code style="color:var(--amber)">ed25519</code></td>
-          <td>Ed25519</td>
-          <td>32 B</td>
-          <td>64 B</td>
-          <td>Duplicate odd-leaf</td>
-          <td><span class="badge badge-stable">Stable</span></td>
-        </tr>
-        <tr>
-          <td style="font-family:var(--mono);font-size:11px;color:var(--amber)">axm-blake3-mldsa44</td>
-          <td>ML-DSA-44 (FIPS 204)</td>
-          <td>1312 B</td>
-          <td>2420 B</td>
-          <td>RFC 6962 odd-leaf promotion</td>
-          <td><span class="badge badge-pq">Post-Quantum</span> <span class="badge badge-stable">Default</span></td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--amber)">axm-hybrid1</td>
+          <td>Ed25519 ‖ ML-DSA-44 (FIPS 204) — both must verify</td>
+          <td>1344 B</td>
+          <td>2484 B</td>
+          <td>RFC 6962 odd-node promotion</td>
+          <td><span class="badge badge-pq">Hybrid PQ</span> <span class="badge badge-stable">Only suite</span></td>
         </tr>
       </tbody>
     </table>
     <div class="domain-sep animate-up delay-3">
-      <h3>Domain Separation (axm-blake3-mldsa44)</h3>
+      <h3>Domain Separation (axm-hybrid1)</h3>
       <div class="domain-sep-body">
         <div><span class="lbl">Leaf</span> &nbsp;= BLAKE3( <span class="byte">0x00</span> ‖ relpath ‖ <span class="byte">0x00</span> ‖ file_bytes )</div>
         <div><span class="lbl">Node</span> &nbsp;= BLAKE3( <span class="out">0x01</span> ‖ left ‖ right )</div>
         <div><span class="lbl">Odd</span> &nbsp;&nbsp;= promote unchanged — no duplication (RFC 6962, CVE-2012-2459 safe)</div>
         <div><span class="lbl">Empty</span> = BLAKE3( <span class="out">0x01</span> ) = <span class="note">48fc721f...</span> <span class="note">← frozen constant</span></div>
+        <div><span class="lbl">Msg</span> &nbsp;&nbsp;= <span class="note">"axm-genesis/v1/manifest"</span> ‖ <span class="byte">0x00</span> ‖ manifest_bytes <span class="note">← both components sign this</span></div>
       </div>
     </div>
   </div>
@@ -786,29 +778,29 @@
       <div class="verify-step">
         <div class="step-num">2</div>
         <div class="step-body">
-          <h3>Manifest Parse + Schema</h3>
-          <p>manifest.json is read once — the same bytes are used for both Merkle verification and signature verification to prevent TOCTOU swaps. Bounded by 256 KiB limit.</p>
+          <h3>Manifest Parse + Full Schema</h3>
+          <p>manifest.json is read once — the same bytes are used for signature verification and identity to prevent TOCTOU swaps. Byte-exact canonical encoding, every required field validated (spec_version, suite, created_at format, sources bijection, statistics), closed key set, no shard_id.</p>
         </div>
       </div>
       <div class="verify-step">
         <div class="step-num">3</div>
         <div class="step-body">
-          <h3>Trusted Key Anchor + Signature</h3>
-          <p>Requires <code>--trusted-key</code>. The shard's publisher.pub must match the trusted key exactly. Then the manifest signature is verified against that key using the suite-appropriate algorithm.</p>
+          <h3>Trusted Key Anchor + Hybrid Signature</h3>
+          <p>Requires <code>--trusted-key</code>. The shard's publisher.pub must match the trusted key exactly. Then both hybrid components — Ed25519 and ML-DSA-44 — must verify over the domain-separated message.</p>
         </div>
       </div>
       <div class="verify-step">
         <div class="step-num">4</div>
         <div class="step-body">
           <h3>Merkle Root Computation</h3>
-          <p>All shard files except manifest.json and sig/ are hashed using the suite-specific Merkle construction. Computed root must match <code>manifest.integrity.merkle_root</code> exactly.</p>
+          <p>All shard files except manifest.json and sig/ are hashed using the single frozen Merkle construction. Computed root must match <code>manifest.integrity.merkle_root</code> exactly.</p>
         </div>
       </div>
       <div class="verify-step">
         <div class="step-num">5</div>
         <div class="step-body">
-          <h3>Parquet Schema Validation</h3>
-          <p>Column names, types, and counts for entities, claims, provenance, and spans are checked against frozen Arrow schemas. Row counts bounded by policy limit. Null values in required columns fail.</p>
+          <h3>Core Table Validation (JSONL)</h3>
+          <p>Each line of entities, claims, provenance, and spans must be canonical JSON with the exact frozen key set and types; rows sorted bytewise by primary key, no duplicates, no nulls, no floats. Entity and claim IDs are recomputed from their preimages.</p>
         </div>
       </div>
       <div class="verify-step">
@@ -821,8 +813,8 @@
       <div class="verify-step">
         <div class="step-num">7</div>
         <div class="step-body">
-          <h3>Hot Stream Continuity (REQ 5)</h3>
-          <p>If <code>content/cam_latents.bin</code> is present: file magic AXLF verified, then AXLR records scanned for gap-free monotone frame_id sequence. Any gap emits <code>E_BUFFER_DISCONTINUITY</code>. Absent = silent pass.</p>
+          <h3>Profiles</h3>
+          <p>Every profile the manifest declares and the verifier implements is run (e.g. <code>embodied&#64;1</code> → <code>E_BUFFER_DISCONTINUITY</code>); the rest are reported in <code>profiles_unchecked</code>. Unchecked is not passed.</p>
         </div>
       </div>
     </div>
@@ -836,7 +828,7 @@
       <span class="section-number">§ 07</span>
       <h2>AXM Compatibility Requirements</h2>
     </div>
-    <p class="animate-up delay-1">Spokes that produce shards must satisfy all five requirements. Run the conformance suite with <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">pytest tests/test_conformance.py -v</code> — all 13 tests must pass.</p>
+    <p class="animate-up delay-1">Spokes that produce shards must satisfy the four kernel requirements; domain checks (the former REQ 5) live in profiles. Run the conformance suite with <code style="font-family:var(--mono);font-size:14px;color:var(--amber)">pytest tests/test_conformance.py -v</code>.</p>
     <table class="req-table animate-up delay-2">
       <thead>
         <tr><th>REQ</th><th>Description</th><th>Error Codes</th></tr>
@@ -854,17 +846,17 @@
         </tr>
         <tr>
           <td class="req-id">REQ 3</td>
-          <td>Lineage events — all references valid, no nulls in required columns</td>
+          <td>Traceable lineage — all references valid, no nulls in required fields</td>
           <td class="req-codes">E_REF_ORPHAN<br>E_SCHEMA_NULL</td>
         </tr>
         <tr>
           <td class="req-id">REQ 4</td>
-          <td>Proof bundle — valid signature from a trusted publisher key</td>
+          <td>Proof bundle — valid hybrid signature from a trusted publisher key</td>
           <td class="req-codes">E_SIG_INVALID<br>E_SIG_MISSING</td>
         </tr>
         <tr>
-          <td class="req-id">REQ 5</td>
-          <td>Non-selective recording — no gaps in binary hot stream (embodied spokes)</td>
+          <td class="req-id">embodied&#64;1</td>
+          <td>Non-selective recording — a profile, not a kernel requirement: no gaps in the binary hot stream, for shards declaring it</td>
           <td class="req-codes">E_BUFFER_DISCONTINUITY</td>
         </tr>
       </tbody>
@@ -892,14 +884,14 @@
         <tr><td class="error-code">E_MANIFEST_SCHEMA</td><td class="error-desc">manifest.json missing required field or field has wrong type</td></tr>
         <tr class="error-group"><th colspan="2">Signature</th></tr>
         <tr><td class="error-code">E_SIG_MISSING</td><td class="error-desc">sig/manifest.sig or sig/publisher.pub not found</td></tr>
-        <tr><td class="error-code">E_SIG_INVALID</td><td class="error-desc">Signature does not verify, key mismatch, or wrong key size for suite</td></tr>
+        <tr><td class="error-code">E_SIG_INVALID</td><td class="error-desc">Either hybrid component fails to verify, trusted-key mismatch, or wrong key/signature length</td></tr>
         <tr class="error-group"><th colspan="2">Integrity</th></tr>
         <tr><td class="error-code">E_MERKLE_MISMATCH</td><td class="error-desc">Computed Merkle root does not match stored value in manifest</td></tr>
-        <tr class="error-group"><th colspan="2">Schema</th></tr>
-        <tr><td class="error-code">E_SCHEMA_READ</td><td class="error-desc">Parquet file unreadable or exceeds size / row-count limit</td></tr>
-        <tr><td class="error-code">E_SCHEMA_MISSING</td><td class="error-desc">Required Parquet file absent</td></tr>
-        <tr><td class="error-code">E_SCHEMA_TYPE</td><td class="error-desc">Wrong column name, type, or count in a required table</td></tr>
-        <tr><td class="error-code">E_SCHEMA_NULL</td><td class="error-desc">Null value found in a required column</td></tr>
+        <tr class="error-group"><th colspan="2">Core tables</th></tr>
+        <tr><td class="error-code">E_SCHEMA_READ</td><td class="error-desc">Table unreadable, malformed or non-canonical JSON line, rows out of order, or duplicate primary key</td></tr>
+        <tr><td class="error-code">E_SCHEMA_MISSING</td><td class="error-desc">Required core table (.jsonl) absent</td></tr>
+        <tr><td class="error-code">E_SCHEMA_TYPE</td><td class="error-desc">Unexpected key in a record, or a value of the wrong JSON type</td></tr>
+        <tr><td class="error-code">E_SCHEMA_NULL</td><td class="error-desc">Required field missing from a record, or null</td></tr>
         <tr><td class="error-code">E_SCHEMA_ENUM</td><td class="error-desc">Invalid object_type or tier value</td></tr>
         <tr class="error-group"><th colspan="2">Identity</th></tr>
         <tr><td class="error-code">E_ID_ENTITY</td><td class="error-desc">entity_id does not match recomputed hash from namespace + label</td></tr>
@@ -908,8 +900,8 @@
         <tr><td class="error-code">E_REF_ORPHAN</td><td class="error-desc">Claim subject or entity-type object not found in entities table</td></tr>
         <tr><td class="error-code">E_REF_SOURCE</td><td class="error-desc">span or provenance source_hash not in content/, or byte range out of bounds</td></tr>
         <tr><td class="error-code">E_REF_READ</td><td class="error-desc">Content file unreadable during span byte-range verification</td></tr>
-        <tr class="error-group"><th colspan="2">Stream Continuity (REQ 5)</th></tr>
-        <tr><td class="error-code">E_BUFFER_DISCONTINUITY</td><td class="error-desc">Frame gap, bad magic, or truncation in cam_latents.bin (embodied spokes only)</td></tr>
+        <tr class="error-group"><th colspan="2">Profile: embodied&#64;1</th></tr>
+        <tr><td class="error-code">E_BUFFER_DISCONTINUITY</td><td class="error-desc">Frame gap, bad magic, or truncation in cam_latents.bin (profile code — shards declaring embodied&#64;1 only)</td></tr>
       </tbody>
     </table>
   </div>
@@ -930,21 +922,21 @@
       <div class="qs-body">
         <div><span class="prompt">$ </span><span class="cmd">pip install -e <span class="arg">".[dev]"</span></span></div>
         <div>&nbsp;</div>
-        <div><span class="comment"># Verify the gold shard against the canonical test key</span></div>
-        <div><span class="prompt">$ </span><span class="cmd">axm-verify shard <span class="arg">shards/gold/fm21-11-hemorrhage-v1/</span> \</span></div>
-        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd">--trusted-key <span class="arg">keys/canonical_test_publisher.pub</span></span></div>
-        <div><span class="output">{"shard":"...","status":"PASS","error_count":0,"errors":[]}</span></div>
+        <div><span class="comment"># Verify the gold shard against its publisher key</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">axm-verify shard <span class="arg">shards/gold/fm21-11-hemorrhage-v2/</span> \</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd">--trusted-key <span class="arg">keys/gold-v2-provisional.pub</span></span></div>
+        <div><span class="output">{"shard":"...","status":"PASS","error_count":0,"errors":[],</span></div>
+        <div><span class="output">&nbsp;"profiles_checked":[],"profiles_unchecked":[]}</span></div>
         <div>&nbsp;</div>
-        <div><span class="comment"># Run the full conformance suite (13 tests)</span></div>
+        <div><span class="comment"># Run the conformance suite</span></div>
         <div><span class="prompt">$ </span><span class="cmd">python -m pytest <span class="arg">tests/test_conformance.py</span> -v</span></div>
         <div><span class="output">test_baseline_gold_shard_passes ................... PASSED</span></div>
         <div><span class="output">test_req1_manifest_byte_flip_detected ............. PASSED</span></div>
-        <div><span class="output">test_req5_buffer_gap_detected ..................... PASSED</span></div>
-        <div><span class="output">13 passed in 0.84s</span></div>
         <div>&nbsp;</div>
-        <div><span class="comment"># Build a new shard from candidates.jsonl + source</span></div>
+        <div><span class="comment"># Generate a hybrid keypair, then build a shard</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">axm-build keygen <span class="arg">keys-out/</span> --name <span class="arg">me</span></span></div>
         <div><span class="prompt">$ </span><span class="cmd">axm-build compile <span class="arg">candidates.jsonl content/</span> <span class="arg">out/my-shard/</span> \</span></div>
-        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd">--suite <span class="arg">axm-blake3-mldsa44</span> --private-key <span class="arg">keys/my.sk</span></span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd">--private-key <span class="arg">keys-out/me.key</span></span></div>
       </div>
     </div>
     <div class="quickstart-block animate-up delay-2" style="margin-top:16px;">
@@ -954,10 +946,10 @@
       </div>
       <div class="qs-body">
         <div><span class="comment"># Canonical UTF-8 (NFC normalization)</span></div>
-        <div><span class="comment"># Deterministic JSON (sorted keys, no whitespace)</span></div>
-        <div><span class="comment"># BLAKE3 for Merkle hashing, SHA-256 for content hashing</span></div>
-        <div><span class="comment"># Ed25519 or ML-DSA-44 for signatures</span></div>
-        <div><span class="comment"># Parquet with explicit schemas + deterministic row ordering</span></div>
+        <div><span class="comment"># Canonical JSON / JSONL (sorted keys, no whitespace)</span></div>
+        <div><span class="comment"># BLAKE3 for Merkle tree + shard identity, SHA-256 for content + IDs</span></div>
+        <div><span class="comment"># Ed25519 + ML-DSA-44 hybrid signatures (both must verify)</span></div>
+        <div><span class="comment"># No Parquet, no Arrow, no database — plain text primitives</span></div>
         <div>&nbsp;</div>
         <div><span class="comment"># Correctness is defined by the gold shard.</span></div>
         <div><span class="comment"># A reimplementation that accepts it and rejects the</span></div>
@@ -971,9 +963,9 @@
   <div class="page-wrap">
     <div class="footer-inner">
       <div class="footer-left">
-        <div><strong>AXM Genesis</strong> v1.2.0 · Apache-2.0</div>
-        <div>Spec v1.0.0 frozen · Gold shard fm21-11-hemorrhage-v1</div>
-        <div>Post-quantum by default since v1.1.0 (RFC 0001)</div>
+        <div><strong>AXM Genesis</strong> v1.0.0rc1 · Apache-2.0</div>
+        <div>Spec v1.0.0 (RFC 0002) · Gold shard fm21-11-hemorrhage-v2</div>
+        <div>Hybrid post-quantum suite axm-hybrid1 (Ed25519 ‖ ML-DSA-44)</div>
       </div>
       <div class="footer-links">
         <a href="https://github.com/bigbirdreturns/axm-genesis">GitHub</a>

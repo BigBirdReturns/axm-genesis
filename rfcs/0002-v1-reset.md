@@ -1,10 +1,14 @@
 # RFC 0002: The v1.0 Reset — Freeze Once, Freeze Right
 
-> **Status: ACCEPTED** — 2026-07-02, maintainer (BigBirdReturns).
-> All four decision points resolved per the recommendations (see the
-> sign-off table below). RFC 0003 is superseded and closed without
-> action. Reference implementation in progress on
-> `claude/rfc-0002-v1-reset`.
+> **Status: IMPLEMENTED (pending ceremony + tag)** — accepted 2026-07-02,
+> maintainer (BigBirdReturns); reference implementation landed on
+> `claude/rfc-0002-v1-reset` the same day. All four decision points
+> resolved per the recommendations (see the sign-off table below).
+> RFC 0003 is superseded and closed without action. Outstanding
+> maintainer-only steps: the D7 offline key ceremony (re-mint of the
+> provisionally-signed gold shard v2) and the v1.0.0 tag/release —
+> runbook in `RELEASE.md`. One D8 item was overridden by the maintainer:
+> `index.html` stays in this repository (it serves GitHub Pages).
 
 ## Summary
 

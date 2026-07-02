@@ -4,7 +4,8 @@
 **Maintained in**: this file (append-only; entries are numbered and never renumbered)
 
 Some AXM Genesis artifacts cannot be edited after publication: the design paper
-is a distributed PDF, and everything under [`spec/v1.0/`](../spec/v1.0/) is
+is a distributed PDF, and everything under `spec/v1.0/` (the v0.x prototype
+spec, now archived at [`archive/v0/spec/`](../archive/v0/spec/)) is
 frozen per [CONTRIBUTING.md](../CONTRIBUTING.md). When an error or gap is found
 in one of those artifacts, the correction is recorded here. Each entry states
 (a) what is wrong and where, (b) the correct/normative statement, and (c) the
@@ -39,7 +40,7 @@ incorrectly in three ways:
 
 **The normative statement.** The paper is explicitly non-normative. The
 normative definition of the Merkle construction is
-[`spec/v1.0/SPECIFICATION.md`](../spec/v1.0/SPECIFICATION.md) section 4
+[`spec/v1.0/SPECIFICATION.md`](../archive/v0/spec/SPECIFICATION.md) section 4
 (§4.1 legacy, §4.2 post-quantum) together with the reference implementation
 [`src/axm_build/merkle.py`](../src/axm_build/merkle.py). For the record, the
 correct construction is:
@@ -70,7 +71,7 @@ Empty = frozen constant
 ```
 
 The `merkle_root` recorded in the manifest is the lowercase hex encoding of
-the root digest. The executable oracle is [`tests/vectors/merkle.json`](../tests/vectors/merkle.json)
+the root digest. The executable oracle is [`archive/v0/vectors/merkle.json`](../archive/v0/vectors/merkle.json)
 plus the gold shard.
 
 **Fix path.** A future paper revision (v0.7) should correct §6.3.3 or replace
@@ -81,7 +82,7 @@ points readers to this erratum. Nothing in `spec/v1.0/` changes.
 
 ## Erratum 2 — spec v1.0 does not pin a Unicode version for canonicalization
 
-**Artifact**: [`spec/v1.0/SPECIFICATION.md`](../spec/v1.0/SPECIFICATION.md), section 6.1 (Canonicalization).
+**Artifact**: [`spec/v1.0/SPECIFICATION.md`](../archive/v0/spec/SPECIFICATION.md), section 6.1 (Canonicalization).
 
 **The gap.** Section 6.1 defines canonicalization as NFC normalization,
 case-folding, control-character removal, and whitespace collapsing, and
@@ -122,7 +123,7 @@ be added; the existing vectors never change.
 
 ## Erratum 3 — spec v1.0 does not pin the Parquet feature subset
 
-**Artifact**: [`spec/v1.0/SPECIFICATION.md`](../spec/v1.0/SPECIFICATION.md), section 7 (Parquet Tables).
+**Artifact**: [`spec/v1.0/SPECIFICATION.md`](../archive/v0/spec/SPECIFICATION.md), section 7 (Parquet Tables).
 
 **The gap.** Section 7 says the core tables are "Parquet files with explicit
 Arrow schemas" but does not pin which subset of the (large, evolving) Parquet
@@ -150,7 +151,7 @@ default, and nothing more:
   single row group per table at current shard sizes.
 
 The executable anchors are the gold shard
-([`shards/gold/fm21-11-hemorrhage-v1/`](../shards/gold/fm21-11-hemorrhage-v1/))
+([`archive/v0/gold/fm21-11-hemorrhage-v1/`](../archive/v0/gold/fm21-11-hemorrhage-v1/))
 and the committed shard vectors under
 [`tests/vectors/shards/`](../tests/vectors/shards/): a Parquet reader that can
 read those files can read any conforming shard's core tables.
@@ -165,3 +166,29 @@ values 0–4).
 proposes that spec v1.1 state this Parquet subset normatively (additive —
 every existing shard, including the gold shard, is already inside the
 subset).
+
+---
+
+## Register note (2026-07-02) — Errata 2 and 3: fix path closed via RFC 0002
+
+The fix path for Errata 2 and 3 did **not** go through
+[RFC 0003](../rfcs/0003-spec-v1-1-pinning-clarifications.md), which was
+superseded and closed without action. It landed via
+[RFC 0002](../rfcs/0002-v1-reset.md) (the v1.0 reset) in `spec/v1/`:
+
+- **Erratum 2 (Unicode pinning)**: `spec/v1/SPECIFICATION.md` §10.1 makes
+  `canonicalize()` Unicode-version-independent (ASCII-only lowercasing
+  instead of `casefold()`, an enumerated frozen whitespace set, NFC pinned
+  at Unicode 15.1.0 under the normalization stability policy), with
+  adversarial cases in the v1 identity vectors.
+- **Erratum 3 (Parquet subset pinning)**: moot — RFC 0002 D2 removed
+  Parquet from the shard format entirely; the core tables are canonical
+  JSONL (`spec/v1/SPECIFICATION.md` §11) and Parquet is a derived, local,
+  non-normative query cache.
+
+Both errata remain in this register unchanged: they correctly describe gaps
+in the **v0.x prototype lineage** (`archive/v0/spec/`, formerly
+`spec/v1.0/`), whose artifacts they still annotate. Their interim normative
+anchors (`tests/vectors/identity.json` under Unicode 14.0.0; the de-facto
+Parquet subset) apply only to those archived artifacts. Erratum 1's fix
+path (paper v0.7 correcting §6.3.3) is still pending.

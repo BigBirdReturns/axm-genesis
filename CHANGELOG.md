@@ -1,5 +1,82 @@
 # Changelog
 
+## [1.0.0rc1] - 2026-07-02 — The v1.0 reset (RFC 0002)
+
+Everything shipped before this entry is reclassified as the **v0.x
+prototype lineage** (the "1.0.0"–"1.2.0" entries below were never tagged
+or published; their artifacts live on under `archive/v0/`). This change
+set implements [RFC 0002](rfcs/0002-v1-reset.md) — accepted 2026-07-02 —
+in full, minus the two steps only the maintainer can perform (offline key
+ceremony and the v1.0.0 tag; runbook in `RELEASE.md`).
+
+### Changed (breaking — the premise of the RFC; no external dependents exist)
+- **One signature suite**: `axm-hybrid1` — `publisher.pub` =
+  Ed25519 ‖ ML-DSA-44 public keys (1344 B), `manifest.sig` = both
+  signatures (2484 B), verification succeeds iff **both** components
+  verify. The manifest `suite` field is required; suite detection by key
+  size is deleted, as are the legacy `ed25519` and `axm-blake3-mldsa44`
+  suites.
+- **One Merkle construction**: domain-separated BLAKE3 with RFC 6962
+  odd-node promotion (empty root `BLAKE3(0x01)` =
+  `48fc721f…88652b`). The legacy duplicate-odd-leaf construction is
+  deleted.
+- **Canonical JSONL core tables**: `graph/entities.jsonl`,
+  `graph/claims.jsonl`, `graph/provenance.jsonl`, `evidence/spans.jsonl` —
+  one canonical-JSON record per line, exact key sets, no nulls/floats,
+  rows sorted bytewise by primary key, duplicate keys rejected. **Parquet
+  is gone from the shard** and from the kernel dependencies (pyarrow
+  dropped); it is demoted to a derived, local, rebuildable query cache
+  outside the shard.
+- **Derived shard identity**: `shard_id` removed from the manifest;
+  identity is `"sh1_" + BLAKE3(canonical manifest bytes).hex()`. A
+  manifest containing `shard_id` is rejected. Lineage/references use the
+  `sh1_` form for predecessor ids only; the compiler's two-pass
+  Merkle/backfill is deleted.
+- **Full-length, Unicode-stable identifiers**: full 32-byte SHA-256
+  digests, base32 lowercase (52 chars), versioned prefixes `e1_` `c1_`
+  `p1_` `s1_`. `canonicalize()` = NFC → ASCII-only lowercasing (not
+  `casefold()`) → strip `Cc` controls → collapse whitespace; behavior
+  locked by adversarial identity vectors.
+- **Full manifest enforcement + domain-separated signing**: every required
+  field validated (`spec_version` = `"1.0.0"`, `suite`, `metadata.*` with
+  RFC 3339 `Z`-suffix `created_at`, `publisher.*`, `license.spdx`,
+  `sources` as a bijection with `content/`, `integrity.*`, `statistics.*`
+  equal to actual row counts; closed top-level key set). Signature message
+  is `b"axm-genesis/v1/manifest\x00" + manifest_bytes`.
+- **REQ 5 became the `embodied@1` profile**: the kernel no longer knows
+  about `cam_latents.bin`/`AXLF`/`AXLR`. Manifests declare profiles; the
+  verifier result gains `profiles_checked` / `profiles_unchecked`
+  (unchecked ≠ passed). `E_BUFFER_DISCONTINUITY` is a profile error code;
+  STREAM_FORMAT.md became `spec/profiles/embodied@1.md`.
+- **Spec rewritten as `spec/v1/`** (SPECIFICATION.md + CONFORMANCE.md,
+  single coherent documents); `spec/v1.0/`, the v0.x gold shard, keys, and
+  vectors moved to `archive/v0/`. COMPATIBILITY.md regenerated from the
+  new spec.
+- Version is 1.0.0rc1, single-sourced from `axm_verify.__version__`.
+
+### Added
+- Gold shard v2 (`shards/gold/fm21-11-hemorrhage-v2/`, `axm-hybrid1`,
+  JSONL), minted from the same FM 21-11 source — **provisionally signed**
+  pending the offline key ceremony (`keys/gold-v2-provisional.pub`;
+  caveats in `shards/gold/README.md`).
+- `axm-build keygen` (hybrid keypair generation); hybrid signing path.
+- Regenerated conformance vectors: manifest-schema violations (one per
+  field), sources-bijection, statistics, `shard_id`-present, unknown
+  suite, per-component bad signatures, ordering/duplicate-key, adversarial
+  Unicode identity cases, profile vectors, and `EXPECTED.md` machine
+  ground truth.
+- `RELEASE.md`: the maintainer runbook — key ceremony, ceremony re-mint,
+  re-attestation (RFC 3161 / OTS / SWH), OTS upgrade, signed v1.0.0 tag,
+  GitHub release, PyPI, Zenodo, rc→final version flip.
+
+### Backward Compatibility
+- None, by design — RFC 0002's premise is that no external dependents
+  exist yet. v0.x artifacts do not verify under the v1 kernel; they are
+  preserved (with their original checksums and timestamp attestations)
+  under `archive/v0/`.
+
+---
+
 ## [Unreleased] - 2026-07-01
 Durability remediation change set, addressing the headline findings of the
 30-year durability assessment (`docs/DURABILITY.md`, which now carries a
