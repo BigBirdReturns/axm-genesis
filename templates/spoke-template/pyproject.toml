@@ -1,0 +1,55 @@
+# axm-spoke-template — a minimal, working AXM spoke.
+#
+# Rename checklist (see README.md): distribution name, package directory,
+# entry-point key, and the click group in cli.py.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axm-spoke-template"
+version = "0.1.0"
+description = "Template spoke: compiles a text file into a signed AXM shard via axm-genesis"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  # Pin axm-genesis, the only package allowed to compile and sign shards.
+  #
+  # TODAY (pre-v1.0.0): pin the exact commit you built against —
+  #   "axm-genesis @ git+https://github.com/BigBirdReturns/axm-genesis@<commit>"
+  # AFTER the v1.0.0 release (RELEASE.md step 7 publishes to PyPI): use the
+  # semver range — the frozen kernel guarantees every 1.x verifies your
+  # shards (COMPATIBILITY.md):
+  #   "axm-genesis[pq-compat]>=1.0.0,<2"
+  #
+  # The [pq-compat] extra pulls the pure-Python ML-DSA-44 backend needed for
+  # signing; install [pq] (liboqs) instead where the C library is available.
+  "axm-genesis[pq-compat]>=1.0.0rc1,<2",
+  "click>=8.0.0",
+  "blake3>=0.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+]
+
+[project.entry-points."axm.spokes"]
+# axm-core discovers spokes through this group: the key becomes the
+# subcommand under `axm`, the value must resolve to a click.Group.
+# See https://github.com/BigBirdReturns/axm-core/blob/main/SPOKE_API.md
+spoke-template = "axm_spoke_template.cli:spoke_template_group"
+
+[project.scripts]
+# Standalone CLI so the spoke also works without axm-core installed.
+axm-spoke-template = "axm_spoke_template.cli:spoke_template_group"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

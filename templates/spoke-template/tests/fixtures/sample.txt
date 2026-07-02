@@ -1,0 +1,3 @@
+Tourniquets stop severe bleeding when applied above the wound.
+Elevation supports hemorrhage control in field conditions.
+Direct pressure remains the first response to any bleed.
