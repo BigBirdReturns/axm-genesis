@@ -1,5 +1,11 @@
 # RFC 0002: The v1.0 Reset — Freeze Once, Freeze Right
 
+> **Status: ACCEPTED** — 2026-07-02, maintainer (BigBirdReturns).
+> All four decision points resolved per the recommendations (see the
+> sign-off table below). RFC 0003 is superseded and closed without
+> action. Reference implementation in progress on
+> `claude/rfc-0002-v1-reset`.
+
 ## Summary
 
 Reclassify everything shipped to date as v0.x prototype, and cut the real,
@@ -222,7 +228,17 @@ independently and can be added for decades without touching the kernel.
 - v1.0.0 ships as: signed git tag, GitHub release with checksums, PyPI
   package, SWH + Zenodo deposits.
 
-### Decision points requiring maintainer sign-off
+### Decision points — RESOLVED 2026-07-02
+
+| # | Decision | Resolution |
+|---|----------|------------|
+| 1 | Suite: hybrid vs PQ-only | **Hybrid `axm-hybrid1`** (Ed25519 ‖ ML-DSA-44, both must verify) |
+| 2 | Core tables: JSONL vs pinned Parquet | **Canonical JSONL**; Parquet demoted to a derived local query cache |
+| 3 | `canonicalize()`: ASCII-lower vs pinned casefold | **ASCII-only lowercasing** (Unicode-version-independent) |
+| 4 | Naming | **As proposed**: `axm-hybrid1`, `sh1_`, `e1_`, `c1_`, `p1_`, `s1_` |
+
+All four resolved per the original recommendations, recorded verbatim below
+for the review history:
 
 | # | Decision | Recommendation | Alternative |
 |---|----------|----------------|-------------|
