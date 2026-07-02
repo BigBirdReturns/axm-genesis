@@ -14,7 +14,9 @@ import pyarrow.parquet as pq
 from axm_verify.logic import verify_shard, MAX_FILE_BYTES
 from axm_verify.crypto import compute_merkle_root
 from axm_build.manifest import canonical_manifest_json
-from axm_build.cli import CANONICAL_TEST_PRIVATE_KEY
+CANONICAL_TEST_PRIVATE_KEY = bytes.fromhex(
+    "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+)  # public test key — proves integrity, not authenticity (see keys/README.md)
 
 
 VECTORS = Path(__file__).parent / "vectors"

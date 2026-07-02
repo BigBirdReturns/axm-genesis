@@ -24,7 +24,7 @@ from .schemas import (
     VALID_OBJECT_TYPES,
     VALID_TIERS,
 )
-from .sign import signing_key_from_private_key_bytes, mldsa44_keygen, MLDSAKeyPair, SUITE_MLDSA44, SUITE_ED25519
+from .sign import signing_key_from_private_key_bytes, SUITE_MLDSA44
 
 
 @dataclass(frozen=True)
@@ -86,11 +86,19 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
     content_bytes = norm_text.encode("utf-8")
     source_hash = hashlib.sha256(content_bytes).hexdigest()
 
-    # Fresh output
+    # Fresh output. A pre-placed sig/publisher.pub survives the wipe: the
+    # sk-only ML-DSA-44 path (documented below) requires the caller to place
+    # it before compiling, so deleting it here would make that path impossible.
+    preplaced_pub = None
     if cfg.out_dir.exists():
+        pub_path = cfg.out_dir / "sig" / "publisher.pub"
+        if pub_path.is_file():
+            preplaced_pub = pub_path.read_bytes()
         shutil.rmtree(cfg.out_dir)
     for d in ("content", "graph", "evidence", "sig", "ext"):
         (cfg.out_dir / d).mkdir(parents=True, exist_ok=True)
+    if preplaced_pub is not None:
+        (cfg.out_dir / "sig" / "publisher.pub").write_bytes(preplaced_pub)
 
     (cfg.out_dir / "content" / "source.txt").write_bytes(content_bytes)
 
@@ -314,8 +322,11 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
         "spec_version": "1.0.0",
         "suite": cfg.suite,
         "shard_id": f"shard_blake3_{merkle_root}",
-        "created_at": cfg.created_at,
-        "metadata": {"title": cfg.source_path.name, "namespace": cfg.namespace},
+        "metadata": {
+            "title": cfg.source_path.name,
+            "namespace": cfg.namespace,
+            "created_at": cfg.created_at,
+        },
         "publisher": {"id": cfg.publisher_id, "name": cfg.publisher_name},
         "license": {"spdx": "UNLICENSED", "notes": "Generic build"},
         "sources": [{"path": "content/source.txt", "hash": source_hash}],
@@ -332,7 +343,7 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
 
     # Sign with the appropriate suite
     if cfg.suite == SUITE_MLDSA44:
-        from .sign import mldsa44_keygen, mldsa44_sign
+        from .sign import mldsa44_sign
         # ML-DSA-44: pk is NOT derivable from sk (unlike Ed25519).
         # Convention: pass sk||pk (3840 bytes) or sk-only (2528, fresh keypair).
         if len(cfg.private_key) == 3840:

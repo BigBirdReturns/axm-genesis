@@ -26,7 +26,9 @@ from axm_verify.crypto import compute_merkle_root
 from axm_build.compiler_generic import CompilerConfig, compile_generic_shard
 from axm_build.manifest import dumps_canonical_json
 from axm_build.sign import signing_key_from_private_key_bytes
-from axm_build.cli import CANONICAL_TEST_PRIVATE_KEY
+CANONICAL_TEST_PRIVATE_KEY = bytes.fromhex(
+    "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+)  # public test key — proves integrity, not authenticity (see keys/README.md)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOLD_SHARD = REPO_ROOT / "shards" / "gold" / "fm21-11-hemorrhage-v1"
