@@ -46,6 +46,16 @@ Link to code or PR.
 
 The gold shard in `shards/gold/` is never regenerated.
 
-- CI verifies the committed bytes pass verification
-- If a verifier change breaks the gold shard, the verifier change is rejected
 - The gold shard is the definition of correctness
+- CI enforces this on every push and pull request via the **CI** workflow
+  (`.github/workflows/ci.yml`), whose `gold-shard` job:
+  1. Checks the committed bytes against the pinned checksums with
+     `sha256sum -c shards/gold/CHECKSUMS.sha256` (locally: `make verify-frozen`).
+     Any change to the frozen bytes fails this guard.
+  2. Runs `make verify-gold` (the reference verifier against the gold shard
+     with the canonical trusted key) and requires exit code 0.
+- If a verifier change breaks the gold shard, the `gold-shard` job fails and
+  the verifier change is rejected
+- To merge, `make test` (the conformance suite, run by the workflow's `test`
+  job on Python 3.11 and 3.12) and the frozen-bytes check above are required
+  to pass

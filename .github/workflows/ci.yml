@@ -1,0 +1,98 @@
+# CI for AXM Genesis.
+#
+# This workflow enforces the two promises in CONTRIBUTING.md:
+#   1. The committed gold-shard bytes pass verification on every push/PR
+#      (job: gold-shard). If a verifier change breaks the gold shard, this
+#      job fails and the change is rejected.
+#   2. The conformance suite passes (job: test).
+#
+# The gold shard's bytes are additionally pinned by shards/gold/CHECKSUMS.sha256:
+# any modification to the frozen bytes fails the checksum guard even if the
+# modified shard would still verify.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Conformance suite (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package with dev extras
+        # dev extras carry pytest + dilithium-py (ML-DSA-44 backend);
+        # blake3/pynacl/pyarrow/duckdb/click are core dependencies.
+        run: pip install -e ".[dev]"
+
+      - name: Run conformance suite
+        run: python -m pytest tests/ -q
+
+      - name: Re-run without the backend-contract module (order-independence)
+        # Guards against a regression of the DURABILITY.md §1.1 pollution bug:
+        # the suite must pass identically whether or not the reload-based
+        # backend-contract tests ran first.
+        run: python -m pytest tests/ -q -p no:cacheprovider --ignore=tests/test_mldsa_backend_contract.py
+
+      - name: Explicit pollution ordering (backend contract before ML-DSA tests)
+        # Forces the historical worst-case collection order so the fake-backend
+        # cleanup fixture is exercised directly.
+        run: python -m pytest tests/test_mldsa_backend_contract.py tests/test_pq_upgrade.py tests/test_sign.py -q
+
+  gold-shard:
+    name: Gold shard (frozen bytes + verification)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package with dev extras
+        run: pip install -e ".[dev]"
+
+      - name: Frozen-bytes guard (checksums of shards/gold/**)
+        # The gold shard is never regenerated. Any change to the committed
+        # bytes fails here, before verification even runs.
+        run: sha256sum -c shards/gold/CHECKSUMS.sha256
+
+      - name: Verify gold shard with the reference verifier
+        # If a verifier change breaks the gold shard, this fails and the
+        # verifier change is rejected (CONTRIBUTING.md, Gold Shard Policy).
+        run: |
+          set +e
+          make verify-gold
+          rc=$?
+          set -e
+          echo "make verify-gold exited with code $rc (expected 0)"
+          test "$rc" -eq 0
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        # ruff is in the dev extras, but install it directly so lint does not
+        # depend on building the package.
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check src/
