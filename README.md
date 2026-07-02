@@ -1,10 +1,48 @@
 # AXM Genesis
 
+[![CI](https://github.com/BigBirdReturns/axm-genesis/actions/workflows/ci.yml/badge.svg)](https://github.com/BigBirdReturns/axm-genesis/actions/workflows/ci.yml)
+
 **The cryptographic kernel. Compiled knowledge with post-quantum provenance.**
 
-AXM Genesis is the specification and toolchain for creating signed, verifiable knowledge shards. It is the immutable foundation of the AXM ecosystem — every spoke, every hub, every runtime depends on it. Nothing changes here without a frozen-spec RFC.
+AXM Genesis is the specification and toolchain for creating signed, verifiable
+knowledge shards. Every claim in a shard traces to exact bytes in a source
+document; tamper any byte and the Merkle root fails, the signature fails, and
+the shard is rejected. Nothing changes here without a frozen-spec RFC.
 
-## What's in a Shard
+The project's discipline is simple: **every claim in these documents is
+executable.** The compatibility contract is enforced by tests that parse the
+document itself, CI pins the gold shard's bytes with checksums, and the
+verifier's exit codes are frozen and exercised by the conformance suite.
+
+## The AXM ecosystem
+
+| Repository | Role | Explainer |
+|---|---|---|
+| [axm-genesis](https://github.com/BigBirdReturns/axm-genesis) | The frozen cryptographic kernel — compiles and verifies signed knowledge shards | [site](https://bigbirdreturns.github.io/axm-genesis/) |
+| [axm-core](https://github.com/BigBirdReturns/axm-core) | The runtime — Spectra query engine, Forge extraction, spoke host | [site](https://bigbirdreturns.github.io/axm-core/) |
+| [axm-chat](https://github.com/BigBirdReturns/axm-chat) | The first spoke — turns conversation exports into verified memory | [site](https://bigbirdreturns.github.io/axm-chat/) |
+
+Genesis compiles and signs; everything else reads. That boundary is the
+invariant that makes long-term verification possible.
+
+## Quick start
+
+```bash
+make install        # pip install -e ".[dev]"
+make test           # full suite — 90 passed, 3 skipped
+make verify-gold    # verify the gold shard — exit 0, status PASS
+make verify-frozen  # sha256 check that the gold shard bytes are untouched
+```
+
+The verifier's command form and exit codes are frozen
+(see [COMPATIBILITY.md](COMPATIBILITY.md)):
+
+```bash
+axm-verify shard <shard_dir> --trusted-key <publisher_pubkey>
+# exit 0: verified   exit 1: verification failed   exit 2: malformed shard
+```
+
+## What's in a shard
 
 ```
 shard/
@@ -21,79 +59,57 @@ shard/
 │   └── provenance.parquet
 ├── evidence/
 │   └── spans.parquet
-└── ext/                   # Domain extensions (streams, coords, locators, etc.)
+└── ext/                   # Domain extensions (streams, coords, locators, …)
 ```
 
-Every claim traces to exact bytes in the source document. Tamper any byte → Merkle fails → signature fails → shard rejected.
+## Cryptographic suites
 
-## Quick Start
-
-```bash
-pip install -e .
-
-# Verify the gold shard
-axm-verify shard shards/gold/fm21-11-hemorrhage-v1/ \
-  --trusted-key keys/canonical_test_publisher.pub
-
-# Run all tests
-python -m pytest tests/ -v
-
-# Run the conformance suite only
-python -m pytest tests/test_conformance.py -v
-```
-
-## Post-Quantum Backend Install
-
-ML-DSA-44 support is optional and uses backend preference ordering:
-
-1. `liboqs-python` (preferred production C bindings)
-2. `dilithium-py` (pure-Python compatibility fallback)
-
-```bash
-# Preferred ML-DSA backend (requires system liboqs shared library)
-pip install -e ".[pq]"
-
-# Compatibility fallback backend
-pip install -e ".[pq-compat]"
-```
-
-If neither backend is available, ML-DSA-44 sign/verify calls raise `RuntimeError`
-with installation guidance.
-
-### Migration note (v1.2+ PQ extras)
-
-- `.[pq]` now targets the preferred `liboqs-python` backend.
-- `.[pq-compat]` provides `dilithium-py` compatibility fallback.
-- Existing scripts pinned to old `dilithium-py`-only extras should be updated.
-
-## Cryptographic Suites
-
-| Suite | Algorithm | Key Size | Sig Size | Default |
+| Suite | Algorithm | Key size | Sig size | Default |
 |-------|-----------|----------|----------|---------|
-| Ed25519 (legacy) | Ed25519 | 32 B | 64 B | Pre-v1.1.0 |
+| `ed25519` (legacy; absent `suite` field) | Ed25519 | 32 B | 64 B | pre-v1.1.0 |
 | `axm-blake3-mldsa44` | ML-DSA-44 (FIPS 204) | 1312 B | 2420 B | v1.1.0+ |
 
-Both suites use Blake3 and SHA-256 content hashing. Merkle construction differs by suite (see Specification Sections 4.1 and 4.2). Ed25519 shards remain valid indefinitely.
+Both suites use BLAKE3 Merkle trees and SHA-256 content hashing; the Merkle
+construction differs by suite (COMPATIBILITY.md §2 states both exactly).
 
-For ML-DSA-44 compilation, `private_key` must be one of:
+> **Roadmap.** [RFC 0002](rfcs/0002-v1-reset.md) — the v1.0 reset — was
+> **accepted 2026-07-02**: one hybrid suite (`axm-hybrid1`, Ed25519 ‖
+> ML-DSA-44), canonical JSONL core tables, Unicode-independent
+> canonicalization, and a gold shard v2 under a real key ceremony.
+> Implementation is in progress; the suites above remain the shipped
+> surface until it lands.
 
-- `sk||pk` concatenated blob: `2528 + 1312 = 3840` bytes
-- `sk` only: `2528` bytes, with matching `sig/publisher.pub` (`1312` bytes) pre-placed
+ML-DSA-44 support is optional, with backend preference ordering:
 
-Any other key length is rejected with a `ValueError`.
+```bash
+pip install -e ".[pq]"         # liboqs-python (preferred C bindings)
+pip install -e ".[pq-compat]"  # dilithium-py (pure-Python fallback)
+```
 
-## The Gold Shard
+For ML-DSA-44 compilation, `private_key` must be `sk||pk` (3840 bytes), or
+`sk` alone (2528 bytes) with `sig/publisher.pub` pre-placed — the compiler
+preserves a pre-placed key across its output-directory wipe.
 
-`shards/gold/fm21-11-hemorrhage-v1/` is the reference shard extracted from FM 21-11, the US Army first aid field manual. It defines correctness:
+## The gold shard
 
-- Any verifier that **accepts** this shard and **rejects** the invalid test vectors in `tests/vectors/shards/invalid/` is conformant.
-- The gold shard is frozen. It will never be recompiled.
+`shards/gold/fm21-11-hemorrhage-v1/` is the reference shard, extracted from
+FM 21-11 (US Army first aid field manual). It defines correctness:
 
-## AXM Compatibility Requirements
+- A verifier that **accepts** this shard and **rejects** every invalid vector
+  in `tests/vectors/shards/invalid/` is conformant.
+- The gold shard is frozen — CI enforces this with byte-level checksums
+  (`shards/gold/CHECKSUMS.sha256`).
+- Its signature proves **integrity, not authenticity** — the signing key was
+  historically published in this repository. The honest trust model is in
+  [`shards/gold/README.md`](shards/gold/README.md); independent existence
+  proofs (RFC 3161 timestamp, OpenTimestamps, Software Heritage archival)
+  are committed under [`attestations/`](attestations/).
+
+## Compatibility requirements
 
 Spokes that produce shards must satisfy all five requirements:
 
-| Req | Description | Error Codes |
+| Req | Description | Error codes |
 |-----|-------------|------------|
 | REQ 1 | Manifest integrity | `E_SIG_INVALID`, `E_MERKLE_MISMATCH` |
 | REQ 2 | Content identity | `E_MERKLE_MISMATCH`, `E_REF_SOURCE` |
@@ -101,71 +117,36 @@ Spokes that produce shards must satisfy all five requirements:
 | REQ 4 | Proof bundle | `E_SIG_INVALID`, `E_SIG_MISSING` |
 | REQ 5 | Non-selective recording | `E_BUFFER_DISCONTINUITY` |
 
-REQ 5 applies to spokes that maintain binary hot streams (e.g. embodied robotics). Shards without `content/cam_latents.bin` pass through the check silently.
-
-## Conformance Suite
-
-```bash
-python -m pytest tests/test_conformance.py -v
-```
-
-Tests REQ 1–5 plus determinism. All 13 tests are active. REQ 5 tests write synthetic `cam_latents.bin` fixtures using the correct `AXLF`/`AXLR` binary format and verify gap detection end-to-end.
-
-## Error Codes
-
-All error codes are prefixed `E_` and defined in `axm_verify/const.py`. The full set with descriptions:
-
-| Code | Meaning |
-|------|---------|
-| `E_LAYOUT_MISSING` | Required directory or file absent |
-| `E_LAYOUT_DIRTY` | Unexpected file in a required directory |
-| `E_DOTFILE` | Dotfile found anywhere in shard tree |
-| `E_MANIFEST_SYNTAX` | `manifest.json` is not valid JSON |
-| `E_MANIFEST_SCHEMA` | `manifest.json` missing required field or wrong type |
-| `E_SIG_MISSING` | `sig/manifest.sig` or `sig/publisher.pub` not found |
-| `E_SIG_INVALID` | Signature does not verify, key mismatch, or wrong size |
-| `E_MERKLE_MISMATCH` | Computed Merkle root ≠ stored value |
-| `E_SCHEMA_READ` | Parquet file unreadable or exceeds size limit |
-| `E_SCHEMA_MISSING` | Required Parquet file absent |
-| `E_SCHEMA_TYPE` | Wrong column name, type, or count |
-| `E_SCHEMA_NULL` | Null value in a required column |
-| `E_SCHEMA_ENUM` | Invalid `object_type` or `tier` value |
-| `E_ID_ENTITY` | `entity_id` does not match recomputed hash |
-| `E_ID_CLAIM` | `claim_id` does not match recomputed hash |
-| `E_REF_ORPHAN` | Claim subject/object not in entities |
-| `E_REF_SOURCE` | Span/provenance points to non-existent file or OOB byte range |
-| `E_REF_READ` | Content file unreadable during span verification |
-| `E_BUFFER_DISCONTINUITY` | Frame gap in `cam_latents.bin` |
-
-## Troubleshooting
-
-| Symptom | Meaning | Action |
-|---------|---------|--------|
-| `No ML-DSA-44 backend installed` | No PQ backend import succeeded | Install `.[pq]` (preferred) or `.[pq-compat]` |
-| `private_key length ... is not valid for suite 'axm-blake3-mldsa44'` | ML-DSA key blob size is malformed | Pass `sk||pk` (3840 bytes), or `sk` (2528) + pre-placed `sig/publisher.pub` |
-| `E_SIG_INVALID` | Signature mismatch / wrong key / wrong size | Verify trusted key, suite, pubkey bytes, and signature bytes |
-| `E_MERKLE_MISMATCH` | Content tampering or corruption detected | Rebuild/re-sign shard from source; inspect modified files under shard root |
+REQ 5 applies to spokes that maintain binary hot streams (e.g. embodied
+robotics); shards without `content/cam_latents.bin` pass through silently.
+The full error-code table lives in `src/axm_verify/const.py`, and every code
+is documented in [COMPATIBILITY.md](COMPATIBILITY.md) and the spec.
 
 ## Documentation
 
-- [Specification](spec/v1.0/SPECIFICATION.md) — frozen protocol
-- [Conformance](spec/v1.0/CONFORMANCE.md) — minimum requirements for valid shards
-- [Stream Format](STREAM_FORMAT.md) — binary hot stream format (`AXLF`/`AXLR`/`AXRR`)
-- [Paper: A Frozen Cryptographic Kernel for Verified Knowledge Reconstruction](papers/axm-genesis-frozen-cryptographic-kernel-v0.6.pdf) (draft v0.6) — design rationale, VRA definition, and proof-by-construction comparison against RAG. See [`papers/`](papers/) for all papers. Explanatory, not normative.
-- [Changelog](CHANGELOG.md) — release history
-- [Contributing](CONTRIBUTING.md) — RFC process for spec changes
+| Document | What it is |
+|---|---|
+| [spec/v1.0/SPECIFICATION.md](spec/v1.0/SPECIFICATION.md) | The frozen protocol (normative) |
+| [spec/v1.0/CONFORMANCE.md](spec/v1.0/CONFORMANCE.md) | Minimum requirements for a valid shard |
+| [COMPATIBILITY.md](COMPATIBILITY.md) | What is frozen and what may change — machine-checked against the code by `tests/test_compatibility_contract.py` |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | RFC process; gold-shard policy; what CI enforces |
+| [rfcs/](rfcs/README.md) | Design decisions with status — the project's durable decision log |
+| [docs/DURABILITY.md](docs/DURABILITY.md) | The 30-year durability assessment and remediation status |
+| [docs/ERRATA.md](docs/ERRATA.md) | Corrections to published artifacts that cannot be edited |
+| [papers/](papers/README.md) | The design paper (explanatory, not normative) + errata pointer |
+| [attestations/](attestations/README.md) | RFC 3161 / OpenTimestamps / Software Heritage existence proofs |
+| [STREAM_FORMAT.md](STREAM_FORMAT.md) | Binary hot-stream format (`AXLF`/`AXLR`) |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [tests/vectors/](tests/vectors/) | Conformance ground truth — frozen once added |
 
 ## Reimplementation
 
-AXM Genesis can be reimplemented in any language using:
-
-- Canonical UTF-8 (NFC normalization)
-- Deterministic JSON (sorted keys, no whitespace)
-- BLAKE3 for Merkle hashing, SHA-256 for content hashing
-- Ed25519 or ML-DSA-44 for signatures
-- Parquet with explicit schemas and deterministic row ordering
-
-Correctness is defined by the gold shard.
+AXM Genesis can be reimplemented in any language from the spec and vectors
+alone, using: canonical UTF-8 (NFC), deterministic JSON (sorted keys, no
+whitespace), BLAKE3 for Merkle hashing, SHA-256 for content hashing, Ed25519
+or ML-DSA-44 for signatures, and Parquet with explicit schemas. Correctness
+is defined by the gold shard and the test vectors — an implementation that
+passes them is conformant, whatever language it's written in.
 
 ## License
 
