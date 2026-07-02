@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axm-genesis"
-version = "1.2.0"
+# Version is single-sourced from axm_verify.__version__ (currently 1.0.0rc1).
+dynamic = ["version"]
 description = "Protocol for immutable, content-addressed knowledge graphs"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -12,8 +13,6 @@ requires-python = ">=3.10"
 dependencies = [
   "blake3>=0.4.0",
   "pynacl>=1.5.0",
-  "pyarrow>=14.0.0",
-  "duckdb>=0.9.0",
   "click>=8.0.0",
 ]
 
@@ -36,6 +35,9 @@ axm-build = "axm_build.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "axm_verify.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
