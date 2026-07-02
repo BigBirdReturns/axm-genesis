@@ -27,6 +27,16 @@ With these, an embodied spoke compiles its full shard (binary streams,
 `compile_generic_shard` in a single pass — no post-compile injection or
 resealing in spoke code.
 
+- **RFC 0005 (PROPOSED): attestation shards** — portable proof-of-when.
+  Defines the convention for anchoring a shard's manifest bytes in time
+  (RFC 3161 / OpenTimestamps) and publishing the proof as an ordinary v1
+  shard that cites its target via `references@1`; addresses
+  DURABILITY.md §2.4 for arbitrary shards, generalizing the detached
+  gold-shard anchors. Registers `attestations@1` in
+  `EXTENSION_REGISTRY` (composite sort key
+  `(target_shard_id, kind, proof_path)`). No kernel change; the verifier
+  never parses proofs.
+
 ## [1.0.0rc1] - 2026-07-02 — The v1.0 reset (RFC 0002)
 
 Everything shipped before this entry is reclassified as the **v0.x
