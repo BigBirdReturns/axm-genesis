@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+### Added (compiler-side only; nothing frozen changes)
+- `CompilerConfig.extra_content` — additional content files (e.g. an
+  embodied spoke's binary sensor streams) copied verbatim into
+  `content/`, listed in the manifest `sources` bijection (already
+  multi-file per spec §6.4), and sealed as ordinary Merkle leaves. Names
+  are validated (safe POSIX relative paths; `source.txt` cannot be
+  shadowed).
+- `CompilerConfig.extra_ext` — spoke-supplied extension tables
+  (`{ext_id: rows}`). Ids must be registered and must not collide with
+  the tables the kernel compiler derives from candidates
+  (`locators@1`/`references@1`/`temporal@1`/`lineage@1`).
+- `streams@1` registered in `EXTENSION_REGISTRY` (schema and composite
+  sort key `(stream, frame_id, offset)` exactly as recommended by
+  `spec/profiles/embodied@1.md` §7).
+- Canonical JSONL writer: composite sort keys — a sort key may be a
+  sequence of field names; integer components sort numerically
+  (fixed-width decimal encoding keeps the whole key one bytewise
+  comparison). Extension registry entries now declare their own
+  `unique` flag (same values as the previous hard-coded set).
+
+With these, an embodied spoke compiles its full shard (binary streams,
+`embodied@1` profile declaration, stream index) through
+`compile_generic_shard` in a single pass — no post-compile injection or
+resealing in spoke code.
+
 ## [1.0.0rc1] - 2026-07-02 — The v1.0 reset (RFC 0002)
 
 Everything shipped before this entry is reclassified as the **v0.x
