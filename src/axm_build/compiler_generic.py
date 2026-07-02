@@ -77,6 +77,42 @@ def _find_span_strict(content_bytes: bytes, needle: str) -> Tuple[int, int]:
     return idx, idx + len(needle_bytes)
 
 
+def _guard_out_dir_wipe(out_dir: Path) -> None:
+    """Refuse to delete an out_dir that is not this compiler's own output.
+
+    Deleting ``out_dir`` is permitted only when it is (a) empty, or (b) a
+    single previously-compiled shard: a ``manifest.json`` at its root and no
+    nested directory that itself contains a ``manifest.json``. Anything else
+    (a shard-pool root, a directory of unrelated files) raises ``ValueError``
+    before a single byte is deleted.
+    """
+    if not any(out_dir.iterdir()):
+        return  # empty directory: nothing to lose
+
+    if not (out_dir / "manifest.json").is_file():
+        raise ValueError(
+            f"Refusing to delete {out_dir}: it is non-empty and has no "
+            f"manifest.json at its root, so it is not a previously compiled "
+            f"shard. out_dir must be a fresh/empty directory or the single "
+            f"shard being recompiled — never a directory containing other "
+            f"shards or unrelated files."
+        )
+
+    nested = sorted(
+        p.parent for p in out_dir.rglob("manifest.json") if p.parent != out_dir
+    )
+    if nested:
+        listing = ", ".join(str(p) for p in nested)
+        raise ValueError(
+            f"Refusing to delete {out_dir}: it contains nested shard "
+            f"manifests ({listing}), so it looks like a directory of shards "
+            f"(e.g. a shard-pool root), not the single shard being "
+            f"recompiled. out_dir must be a fresh/empty directory or the "
+            f"shard being recompiled — never a directory containing other "
+            f"shards."
+        )
+
+
 def _dedup_by_pk(rows: List[Dict[str, Any]], pk: str) -> List[Dict[str, Any]]:
     """Drop exact-duplicate rows; refuse two different rows with one PK."""
     seen: Dict[str, Dict[str, Any]] = {}
@@ -124,8 +160,11 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
     content_bytes = norm_text.encode("utf-8")
     source_hash = hashlib.sha256(content_bytes).hexdigest()
 
-    # Fresh output directory
+    # Fresh output directory. Guarded: wiping is legal only for an empty
+    # directory or the single shard being recompiled — never a directory
+    # holding other shards (e.g. a shard-pool root).
     if cfg.out_dir.exists():
+        _guard_out_dir_wipe(cfg.out_dir)
         shutil.rmtree(cfg.out_dir)
     for d in ("content", "graph", "evidence", "sig"):
         (cfg.out_dir / d).mkdir(parents=True, exist_ok=True)
