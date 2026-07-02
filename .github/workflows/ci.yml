@@ -49,6 +49,11 @@ jobs:
         # reality, so the suite passes no matter which file runs first.
         run: python -m pytest -q -p no:cacheprovider $(ls tests/test_*.py | sort -r)
 
+      - name: EXPECTED.md drift gate
+        # The shard-vector ground truth must be byte-identical to what the
+        # regenerator derives from the vectors on disk (make verify-expected).
+        run: python tools/regen_expected.py --check
+
   no-backend:
     name: No ML-DSA-44 backend (clean failure mode)
     runs-on: ubuntu-latest
@@ -100,6 +105,11 @@ jobs:
         # The gold shard is never regenerated. Any change to the committed
         # bytes fails here, before verification even runs.
         run: sha256sum -c shards/gold/CHECKSUMS.sha256
+
+      - name: Archived v0.x gold shard pins (archive/v0/gold/**)
+        # The archived prototype lineage is historical but its bytes are
+        # still pinned (archive/v0/README.md); make verify-archive.
+        run: sha256sum -c archive/v0/gold/CHECKSUMS.sha256
 
       - name: Verify gold shard v2 with the reference verifier
         # If a verifier change breaks the gold shard, this fails and the

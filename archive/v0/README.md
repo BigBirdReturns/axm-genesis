@@ -18,7 +18,7 @@ conformance suite, or the trust chain** of AXM Genesis v1.
 | `vectors/identity.json`, `vectors/merkle.json` | v0.x identity and Merkle test vectors (truncated 15-byte IDs, `e_`/`c_` prefixes, legacy duplicate-odd-leaf Merkle cases). Superseded by `tests/vectors/`. |
 | `vectors-shards/` | v0.x shard vectors (Parquet tables, legacy Ed25519 suite; formerly `tests/vectors/shards/`). Superseded by `tests/vectors/shards/`. |
 | `gold/fm21-11-hemorrhage-v1/` | The v0.x gold shard (Parquet tables, legacy Ed25519 suite, `shard_id` in the manifest). Superseded by `shards/gold/fm21-11-hemorrhage-v2/`. |
-| `gold/CHECKSUMS.sha256` | SHA-256 byte pins over the v0.x gold shard. Paths were repointed to this archive location when the shard moved; the hashes themselves are unchanged and still check out (`sha256sum -c archive/v0/gold/CHECKSUMS.sha256` from the repo root). |
+| `gold/CHECKSUMS.sha256` | SHA-256 byte pins over the v0.x gold shard. Paths were repointed to this archive location when the shard moved; the hashes themselves are unchanged and still check out (`sha256sum -c archive/v0/gold/CHECKSUMS.sha256` from the repo root). These pins are CI-enforced on every push/PR (`make verify-archive`, run in the gold-shard job of `.github/workflows/ci.yml`). |
 | `keys/canonical_test_publisher.pub` | The Ed25519 public key the v0.x gold shard was signed with. Its private half was historically published in this repository, so it pins integrity only — it never proved authenticity. |
 | `STREAM_FORMAT.md` | The v0.x hot-stream (`cam_latents.bin` / `AXLF` / `AXLR`) format note. Its normative successor is `spec/profiles/embodied@1.md`; the continuity check left the kernel and became the `embodied@1` profile. |
 

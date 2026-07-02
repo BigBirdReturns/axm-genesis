@@ -1,6 +1,6 @@
 # RFC 0002: The v1.0 Reset — Freeze Once, Freeze Right
 
-> **Status: IMPLEMENTED (pending ceremony + tag)** — accepted 2026-07-02,
+> **Status: IMPLEMENTED (pending ceremony + tag)** — accepted 2026-07-02 (UTC),
 > maintainer (BigBirdReturns); reference implementation landed on
 > `claude/rfc-0002-v1-reset` the same day. All four decision points
 > resolved per the recommendations (see the sign-off table below).

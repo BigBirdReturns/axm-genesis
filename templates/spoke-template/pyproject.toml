@@ -21,11 +21,12 @@ dependencies = [
   # AFTER the v1.0.0 release (RELEASE.md step 7 publishes to PyPI): use the
   # semver range — the frozen kernel guarantees every 1.x verifies your
   # shards (COMPATIBILITY.md):
-  #   "axm-genesis[pq-compat]>=1.0.0,<2"
+  #   "axm-genesis[mldsa-compat]>=1.0.0,<2"
   #
-  # The [pq-compat] extra pulls the pure-Python ML-DSA-44 backend needed for
-  # signing; install [pq] (liboqs) instead where the C library is available.
-  "axm-genesis[pq-compat]>=1.0.0rc1,<2",
+  # The [mldsa-compat] extra pulls the pure-Python ML-DSA-44 backend needed
+  # for signing; install [mldsa] (liboqs) instead where the C library is
+  # available.
+  "axm-genesis[mldsa-compat]>=1.0.0rc1,<2",
   "click>=8.0.0",
   "blake3>=0.4.0",
 ]

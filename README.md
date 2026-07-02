@@ -95,8 +95,8 @@ COMPATIBILITY.md §2–§3 state the constructions exactly.
 ML-DSA-44 needs a backend, with this preference ordering:
 
 ```bash
-pip install -e ".[pq]"         # liboqs-python (preferred C bindings)
-pip install -e ".[pq-compat]"  # dilithium-py (pure-Python fallback)
+pip install -e ".[mldsa]"         # liboqs-python (preferred C bindings)
+pip install -e ".[mldsa-compat]"  # dilithium-py (pure-Python fallback)
 ```
 
 Keys are generated with `axm-build keygen <outdir> --name <publisher>`:

@@ -1,4 +1,4 @@
-.PHONY: install test test-reversed verify-gold verify-frozen lint clean
+.PHONY: install test test-reversed verify-gold verify-frozen verify-archive verify-expected lint clean
 
 install:
 	pip install -e ".[dev]"
@@ -21,6 +21,16 @@ verify-gold:
 # gold-shard job of .github/workflows/ci.yml). Run from the repo root.
 verify-frozen:
 	sha256sum -c shards/gold/CHECKSUMS.sha256
+
+# Archived v0.x gold shard byte pins (historical, non-normative — see
+# archive/v0/README.md). CI enforces these next to the frozen-bytes guard.
+verify-archive:
+	sha256sum -c archive/v0/gold/CHECKSUMS.sha256
+
+# Drift gate for the shard-vector ground truth: EXPECTED.md must be
+# byte-identical to what tools/regen_expected.py derives from the vectors.
+verify-expected:
+	python tools/regen_expected.py --check
 
 lint:
 	ruff check src/ tests/

@@ -16,11 +16,16 @@ sh1_ec77b88475889e48a7cd6d87103b729c7b27b846683cc6e279141f2c40c643fd
 ## PROVISIONAL status — read before trusting the signature
 
 **This v2 mint is PROVISIONAL.** It was signed with a fresh `axm-hybrid1`
-keypair generated inside a cloud coding session on 2026-07-02, **not** under
-the offline key ceremony that RFC 0002 D7 requires. The private key was used
-once, held only in session-local temporary storage, never written to the
-repository, and destroyed (`shred -u`) immediately after signing. The public
-half is committed at `keys/gold-v2-provisional.pub`.
+keypair generated on 2026-07-02 (UTC) inside an ephemeral cloud execution
+container, **not** under the offline key ceremony that RFC 0002 D7
+requires. The secret blob existed only on that container's filesystem for
+the duration of one signing operation, was deleted (`shred -u`)
+immediately after, and the container was reclaimed; no copy was retained
+or transmitted. Be clear about what that is: best-effort hygiene, not a
+ceremony — there is no attestation that no copy exists, which is exactly
+why this signature is labeled provisional and why the offline ceremony
+(RELEASE.md step 1) re-mints the gold shard under a key with provable
+custody. The public half is committed at `keys/gold-v2-provisional.pub`.
 
 What that means:
 

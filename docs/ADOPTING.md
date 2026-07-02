@@ -30,9 +30,9 @@ signature contract. The full do/don't table is in
 ## 2. Depend on the kernel
 
 Declare `axm-genesis` in your `pyproject.toml`. Signing needs an ML-DSA-44
-backend, so include one of the extras: `[pq-compat]` (pure-Python
-`dilithium-py`) or `[pq]` (`liboqs-python`, preferred where the C library
-is available).
+backend, so include one of the extras: `[mldsa-compat]` (pure-Python
+`dilithium-py`) or `[mldsa]` (`liboqs-python`, preferred where the C
+library is available).
 
 **Today (pre-v1.0.0):** the package is not yet on PyPI
 ([RELEASE.md](../RELEASE.md) step 7 publishes it). Pin the exact commit
@@ -40,7 +40,7 @@ you built against:
 
 ```toml
 dependencies = [
-  "axm-genesis[pq-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@9c0b749c3843d3bd7b341117ce6971e0c6d30418",
+  "axm-genesis[mldsa-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@9c0b749c3843d3bd7b341117ce6971e0c6d30418",
 ]
 ```
 
@@ -51,7 +51,7 @@ range (not an exact pin) is correct:
 
 ```toml
 dependencies = [
-  "axm-genesis[pq-compat]>=1.0.0,<2",
+  "axm-genesis[mldsa-compat]>=1.0.0,<2",
 ]
 ```
 
@@ -367,7 +367,7 @@ make it executable or delete it.
 cp -r templates/spoke-template ../axm-mydomain && cd ../axm-mydomain
 # follow the renaming checklist in its README.md
 python -m venv .venv && . .venv/bin/activate
-pip install "axm-genesis[pq-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@<commit>"
+pip install "axm-genesis[mldsa-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@<commit>"
 pip install -e ".[dev]"
 pytest tests/ -v        # 2 passed — the roundtrip works before you write a line
 ```

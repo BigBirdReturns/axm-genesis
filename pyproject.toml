@@ -17,9 +17,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mldsa = [
+  "liboqs-python>=0.11.0",
+]
+mldsa-compat = [
+  "dilithium-py>=0.5.0",
+]
+# deprecated alias of mldsa (remove after v1.0.0)
 pq = [
   "liboqs-python>=0.11.0",
 ]
+# deprecated alias of mldsa-compat (remove after v1.0.0)
 pq-compat = [
   "dilithium-py>=0.5.0",
 ]
