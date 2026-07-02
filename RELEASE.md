@@ -12,6 +12,31 @@ execution order.
 
 ---
 
+## 0. Rename the stale prototype tags
+
+The repository carries four pre-reset tags — `v1.0.0`, `v1.0.2`, `v1.1.0`,
+`v1.2.0` — all pointing at v0.x prototype commits. The first one collides
+with the release tag this runbook cuts in step 6, and all four claim
+version numbers the RFC 0002 reset reclassified. Nothing depends on them
+(no PyPI releases exist; axm-core and axm-chat pin commit SHAs). Preserve
+every pointer under an honest name, then delete the originals:
+
+```bash
+for t in v1.0.0 v1.0.2 v1.1.0 v1.2.0; do
+  git tag "prototype/$t" "$t"          # same commit, honest name
+done
+git push origin 'refs/tags/prototype/*'
+for t in v1.0.0 v1.0.2 v1.1.0 v1.2.0; do
+  git push origin ":refs/tags/$t"      # remove the originals
+  git tag -d "$t"
+done
+```
+
+(This must run from a normally-authenticated clone; the sandboxed
+sessions that produced this branch can only push `claude/*` branches.)
+
+---
+
 ## 1. Key ceremony — generate the canonical publisher keypair (OFFLINE)
 
 Run on an **offline machine** (no network; a live-boot system is ideal).
