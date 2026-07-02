@@ -15,6 +15,30 @@ actually requires.
 
 ---
 
+## Remediation status (2026-07-01)
+
+Status of the headline findings after the first remediation change set. The
+report body below is unchanged and still describes the state *at audit time*;
+this table is the only part that tracks fixes. Findings not listed here
+remain open.
+
+| Finding | Where | Status |
+|---|---|---|
+| Test pollution breaks `make test` (§1.1) | `tests/test_mldsa_backend_contract.py` | **Fixed** — autouse fixture restores the real backend and re-reloads `axm_build.sign` / `axm_verify.crypto` after every reload-based test |
+| No CI (§1.2) | `.github/workflows/` | **Added** in this change set — conformance suite plus a dedicated gold-shard verification job |
+| COMPATIBILITY.md contradicts spec and code (§1.3) | `COMPATIBILITY.md`, `tests/test_compatibility_contract.py` | **Corrected + drift-tested** — rewritten against the spec/code; a new test mechanically checks its checkable claims (suite identifiers, schema columns, exit codes) |
+| Verifier under-enforces the manifest schema (§3.1) | `src/axm_verify/logic.py` | **Enforced** — spec §5.2 required fields now validated, `E_MANIFEST_SCHEMA` names the offending field |
+| Hardcoded gold-shard signing key (§2.1) | `src/axm_build/cli.py`, `shards/gold/README.md`, `keys/README.md` | **Removed from the CLI** (signing now requires `--private-key` / `AXM_SIGNING_KEY_HEX`); the gold shard's zero-authentication-value caveat is documented where the key and shard live |
+| Paper §6.3.3 Merkle description wrong (§1.5) | `docs/ERRATA.md` Erratum 1, `papers/README.md` | **Erratum published** — correct construction reproduced; paper README points readers to it. Paper v0.7 fix still pending |
+| Unicode version unpinned (§3.3) | `docs/ERRATA.md` Erratum 2, `rfcs/0003-spec-v1-1-pinning-clarifications.md` | **Erratum + RFC 0003** — `tests/vectors/identity.json` declared the normative anchor; spec v1.1 pinning proposed. Spec text itself unchanged (frozen) |
+| Parquet subset unpinned (§3.2) | `docs/ERRATA.md` Erratum 3, `rfcs/0003-spec-v1-1-pinning-clarifications.md` | **Erratum + RFC 0003** — de-facto subset recorded; spec v1.1 pinning proposed. Spec text itself unchanged (frozen) |
+| Key rotation / trust store (§2.3) | — | **Open** |
+| Timestamping / PQ attestation of the gold shard (§2.2, §2.4) | — | **Open** |
+| Release engineering: tags, releases, PyPI, SWH/Zenodo (§4.1) | — | **Open** |
+| Independent second implementation (§5) | — | **Open** |
+
+---
+
 ## What already holds up well
 
 Credit where due — the foundations are unusually good for a project this young:

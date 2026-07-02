@@ -1,5 +1,66 @@
 # Changelog
 
+## [Unreleased] - 2026-07-01
+Durability remediation change set, addressing the headline findings of the
+30-year durability assessment (`docs/DURABILITY.md`, which now carries a
+"Remediation status" table mapping each finding to its outcome).
+
+### Added
+- `docs/ERRATA.md`: numbered errata register for non-editable artifacts.
+  Erratum 1 corrects the paper's §6.3.3 Merkle description (normative
+  definition: spec §4 + `src/axm_build/merkle.py`); Erratum 2 records that
+  spec v1.0 does not pin a Unicode version for canonicalization and declares
+  `tests/vectors/identity.json` the normative anchor (Unicode 14.0.0 at time
+  of writing); Erratum 3 records the de-facto Parquet feature subset
+  (format 2.6, flat columns, PLAIN encoding, UNCOMPRESSED/SNAPPY/ZSTD, no
+  encryption).
+- `rfcs/0003-spec-v1-1-pinning-clarifications.md`: proposes spec v1.1
+  additions — pinned Unicode data version policy, pinned Parquet subset, and
+  a formalized verifier exit-code contract (0/1/2).
+- `papers/README.md`: Errata section pointing paper readers to
+  `docs/ERRATA.md` Erratum 1.
+- `tests/test_compatibility_contract.py`: mechanically checks the checkable
+  claims in COMPATIBILITY.md (suite identifiers, frozen schema columns,
+  verifier exit codes) so doc/code drift fails CI.
+- CI workflows: conformance suite plus a dedicated gold-shard verification
+  job.
+- `keys/README.md`: documents the canonical test publisher key and its
+  zero-authentication-value caveat.
+- Test-pollution fix: autouse fixture in `tests/test_mldsa_backend_contract.py`
+  restores the real ML-DSA backend and re-reloads `axm_build.sign` /
+  `axm_verify.crypto` after each reload-based test, so `make test` passes in
+  any collection order.
+
+### Changed
+- `COMPATIBILITY.md`: rewritten against the spec and code — correct Merkle
+  constructions per suite, correct suite identifiers (`ed25519`,
+  `axm-blake3-mldsa44`), the actual frozen `claims.parquet` schema, the real
+  verifier invocation and exit-code contract, and accurate extension-schema
+  locations.
+- `src/axm_verify/logic.py`: enforces the spec §5.2 required manifest fields;
+  `E_MANIFEST_SCHEMA` now names the offending field.
+- `src/axm_verify/cli.py`: exit-code contract implemented — 0 valid, 1
+  verification failure, 2 structurally malformed shard.
+- `src/axm_build/cli.py`: removed the hardcoded `CANONICAL_TEST_PRIVATE_KEY`;
+  signing now requires `--private-key` or `AXM_SIGNING_KEY_HEX`.
+- `shards/gold/README.md`: gold shard documented as frozen bytes; the
+  public-signing-key caveat (the gold shard's signature has no
+  authentication value; its authenticity rests on repository integrity) is
+  stated explicitly.
+
+### Backward Compatibility
+- Every byte under `shards/gold/**` and `tests/vectors/**` is unchanged; the
+  gold shard and all existing vectors verify exactly as before. `spec/v1.0/`
+  is unchanged (frozen). Verifier changes are enforcement-only additions;
+  previously-valid shards remain valid.
+
+### Still open (tracked in `docs/DURABILITY.md`)
+- Key rotation / trust store, timestamping and PQ attestation of the gold
+  shard, release engineering (tags/PyPI/SWH/Zenodo), and an independent
+  second implementation.
+
+---
+
 ## [1.2.0] - 2026-02-25
 ### Added
 - **REQ 5 enforcement**: `E_BUFFER_DISCONTINUITY` added to `ErrorCode` enum in `const.py`.
