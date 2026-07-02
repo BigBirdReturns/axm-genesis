@@ -309,14 +309,15 @@ def compile_generic_shard(cfg: CompilerConfig) -> bool:
         # Pass 2: recompute over the now-correct lineage bytes
         merkle_root = compute_merkle_root(cfg.out_dir, suite=cfg.suite)
 
-    # Detect active extensions (files in ext/)
+    # Detect active extensions (files in ext/). The identifier is the file
+    # stem, which already carries the version per the spec §10 naming
+    # convention (ext/<name>@<version>.parquet → "<name>@<version>").
     ext_dir = cfg.out_dir / "ext"
     active_extensions = []
     if ext_dir.exists():
         for f in sorted(ext_dir.iterdir()):
             if f.is_file() and not f.name.startswith("."):
-                stem = f.stem
-                active_extensions.append(f"{stem}@1")
+                active_extensions.append(f.stem)
 
     manifest = {
         "spec_version": "1.0.0",
