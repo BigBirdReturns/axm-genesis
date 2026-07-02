@@ -1,10 +1,15 @@
-# CI for AXM Genesis.
+# CI for AXM Genesis (v1, RFC 0002).
 #
-# This workflow enforces the two promises in CONTRIBUTING.md:
-#   1. The committed gold-shard bytes pass verification on every push/PR
+# This workflow enforces the promises in CONTRIBUTING.md:
+#   1. The committed gold-shard v2 bytes pass verification on every push/PR
 #      (job: gold-shard). If a verifier change breaks the gold shard, this
 #      job fails and the change is rejected.
-#   2. The conformance suite passes (job: test).
+#   2. The conformance suite passes — twice, with the test files collected
+#      in both orders, so no test can depend on module-level pollution from
+#      an earlier file (job: test).
+#   3. With no ML-DSA-44 backend installed, the kernel fails loudly and
+#      cleanly instead of pretending to verify (job: no-backend).
+#   4. Lint is blocking (job: lint).
 #
 # The gold shard's bytes are additionally pinned by shards/gold/CHECKSUMS.sha256:
 # any modification to the frozen bytes fails the checksum guard even if the
@@ -33,25 +38,53 @@ jobs:
 
       - name: Install package with dev extras
         # dev extras carry pytest + dilithium-py (ML-DSA-44 backend);
-        # blake3/pynacl/pyarrow/duckdb/click are core dependencies.
+        # blake3/pynacl/click are the only core dependencies.
         run: pip install -e ".[dev]"
 
       - name: Run conformance suite
         run: python -m pytest tests/ -q
 
-      - name: Re-run without the backend-contract module (order-independence)
-        # Guards against a regression of the DURABILITY.md §1.1 pollution bug:
-        # the suite must pass identically whether or not the reload-based
-        # backend-contract tests ran first.
-        run: python -m pytest tests/ -q -p no:cacheprovider --ignore=tests/test_mldsa_backend_contract.py
+      - name: Run conformance suite (reversed file order)
+        # Order-independence guard: reload-based backend tests must restore
+        # reality, so the suite passes no matter which file runs first.
+        run: python -m pytest -q -p no:cacheprovider $(ls tests/test_*.py | sort -r)
 
-      - name: Explicit pollution ordering (backend contract before ML-DSA tests)
-        # Forces the historical worst-case collection order so the fake-backend
-        # cleanup fixture is exercised directly.
-        run: python -m pytest tests/test_mldsa_backend_contract.py tests/test_pq_upgrade.py tests/test_sign.py -q
+  no-backend:
+    name: No ML-DSA-44 backend (clean failure mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package with dev extras, then remove the backend
+        run: |
+          pip install -e ".[dev]"
+          pip uninstall -y dilithium-py
+
+      - name: Backend-independent kernel tests still pass
+        # identity/merkle/jsonl need no ML-DSA; test_sign's roundtrip tests
+        # skip and its backend-missing tests assert the clean RuntimeError.
+        run: python -m pytest tests/test_sign.py tests/test_identity.py tests/test_merkle.py tests/test_jsonl.py -q
+
+      - name: Verifier fails loudly and cleanly without a backend
+        # Verifying a real shard must surface the install guidance — never
+        # exit 0 and never mislabel the condition as a bad signature.
+        run: |
+          set +e
+          output=$(axm-verify shard tests/vectors/shards/valid/minimal/shard \
+                     --trusted-key tests/keys/ci_test_publisher.pub 2>&1)
+          rc=$?
+          set -e
+          echo "axm-verify exited with code $rc"
+          test "$rc" -ne 0
+          echo "$output" | grep -q "No ML-DSA-44 backend installed"
+          echo "$output" | grep -q "pip install dilithium-py"
 
   gold-shard:
-    name: Gold shard (frozen bytes + verification)
+    name: Gold shard v2 (frozen bytes + verification)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +101,7 @@ jobs:
         # bytes fails here, before verification even runs.
         run: sha256sum -c shards/gold/CHECKSUMS.sha256
 
-      - name: Verify gold shard with the reference verifier
+      - name: Verify gold shard v2 with the reference verifier
         # If a verifier change breaks the gold shard, this fails and the
         # verifier change is rejected (CONTRIBUTING.md, Gold Shard Policy).
         run: |
@@ -80,7 +113,7 @@ jobs:
           test "$rc" -eq 0
 
   lint:
-    name: Lint (ruff)
+    name: Lint (ruff, blocking)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,4 +128,4 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff
-        run: ruff check src/
+        run: ruff check src/ tests/
