@@ -1,44 +1,69 @@
-# Gold Shard
+# Gold Shard v2 — fm21-11-hemorrhage-v2
 
-The gold shard (`fm21-11-hemorrhage-v1/`) is the definition of correctness.
-It is **frozen bytes**: it is never regenerated, and every byte under
-`shards/gold/fm21-11-hemorrhage-v1/` must remain exactly as committed.
+The gold shard (`fm21-11-hemorrhage-v2/`) is the reference artifact of AXM
+Genesis v1 (`spec/v1/CONFORMANCE.md` section 5): a real shard, minted under
+the `axm-hybrid1` suite from the same FM 21-11 hemorrhage-control source
+text as the retired v0.x gold shard. Its `content/source.txt` is
+byte-identical to `archive/v0/gold/fm21-11-hemorrhage-v1/content/source.txt`
+(SHA-256 `b5f9d284…bb04c` in both checksum files).
 
-It was originally built from the FM 21-11 markdown source with:
+Derived identity (v1 rule — `sh1_` + BLAKE3 of the canonical manifest bytes):
 
-```bash
-axm-build gold-fm21-11 path/to/fm21-11.md <some-other-outdir>/
+```
+sh1_ec77b88475889e48a7cd6d87103b729c7b27b846683cc6e279141f2c40c643fd
 ```
 
-That command remains available for reproduction experiments into a *different*
-output directory — never run it against `shards/gold/`. It now requires an
-explicit signing key (`--private-key` or `AXM_SIGNING_KEY_HEX`); see below for
-why there is no default.
+## PROVISIONAL status — read before trusting the signature
 
-The gold shard uses Ed25519 (legacy suite, no `suite` field in manifest).
-It must pass verification under both v1.0 and v1.1 verifiers:
+**This v2 mint is PROVISIONAL.** It was signed with a fresh `axm-hybrid1`
+keypair generated inside a cloud coding session on 2026-07-02, **not** under
+the offline key ceremony that RFC 0002 D7 requires. The private key was used
+once, held only in session-local temporary storage, never written to the
+repository, and destroyed (`shred -u`) immediately after signing. The public
+half is committed at `keys/gold-v2-provisional.pub`.
+
+What that means:
+
+- **Integrity is fully meaningful.** Verification against
+  `keys/gold-v2-provisional.pub` and the byte pins in `CHECKSUMS.sha256`
+  detect any modification to these bytes. Unlike the v0 key, this key's
+  private half was never published, so no third party can re-sign altered
+  bytes — but a cloud session is not a custody story.
+- **Authenticity awaits the ceremony.** Before the v1.0.0 freeze is
+  declared, the gold shard will be re-minted and signed with the canonical
+  publisher key generated at the RFC 0002 offline key ceremony (custody
+  documented in `keys/README.md`), and timestamp attestations over the new
+  manifest will land under `attestations/`. The re-mint procedure is in
+  `RELEASE.md`. Only that ceremony mint inherits the "never recompiled"
+  pledge.
+
+Because the mint is deterministic (canonical JSONL, deterministic ML-DSA
+signing, fixed `created_at`), the ceremony re-mint from the same source will
+reproduce every byte outside `sig/`, and the manifest is expected to be
+byte-identical; only the key material and signature change.
+
+## Verify
 
 ```bash
-make verify-gold
+axm-verify shard shards/gold/fm21-11-hemorrhage-v2 --trusted-key keys/gold-v2-provisional.pub
+# exit 0, status PASS
+sha256sum -c shards/gold/CHECKSUMS.sha256
 ```
 
-## What the signature proves — and what it does not
+## Reproduction
 
-The shard's Ed25519 signature (`sig/manifest.sig`, verified against
-`keys/canonical_test_publisher.pub`) was made with a key whose **private half
-was historically published in this repository**. Anyone with that key can
-produce signatures that validate against the same public key.
+The shard was built with the reference builder from the archived source
+text (the extractor and claim set are unchanged from the v0 gold builder,
+ported to the v1 kernel):
 
-Consequently:
+```bash
+# wrap the archived section text under its original heading, then:
+axm-build gold-fm21-11 <wrapped-fm21-11.md> <outdir> --private-key <hex>
+```
 
-- The signature **demonstrates the verification pipeline** and **pins
-  integrity**: any modification to the shard's bytes is detected by
-  verification.
-- The signature does **not** establish authenticity. Authenticity of the gold
-  shard rests on the git history of this repository, not on that signature.
+Never run any build command against `shards/gold/` itself. Reproduce into a
+different directory and compare.
 
-For the same reason, the builder CLI no longer ships a default signing key —
-you must supply your own.
-
-See `docs/DURABILITY.md` for the planned remediation: a detached attestation
-and timestamping of the frozen gold-shard bytes.
+The v0.x gold shard (`fm21-11-hemorrhage-v1`, legacy Ed25519 suite, Parquet
+tables) is archived history at `archive/v0/gold/` and is no longer
+normative.

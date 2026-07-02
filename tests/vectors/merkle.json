@@ -1,0 +1,73 @@
+{
+  "_comment": "AXM Genesis v1 Merkle vectors (spec/v1/SPECIFICATION.md section 8). leaf = BLAKE3(0x00 || relpath_utf8 || 0x00 || file_bytes); node = BLAKE3(0x01 || left || right); the odd node is promoted unchanged (RFC 6962); empty root = BLAKE3(0x01). Covered files: every regular file under the shard root except manifest.json and sig/**, sorted by the UTF-8 bytes of the POSIX relative path. The legacy duplicate-odd-leaf construction is deleted and MUST NOT be implemented.",
+  "empty_root": "48fc721fbbc172e0925fa27af1671de225ba927134802998b10a1568a188652b",
+  "leaves": [
+    {
+      "relpath": "content/test.txt",
+      "content_utf8": "hello world\n",
+      "expected_leaf": "7048fb2e31b2ef3f932ec77a2dccc3afd2381a780766287fc89b35981de41558"
+    },
+    {
+      "relpath": "graph/entities.jsonl",
+      "content_utf8": "",
+      "expected_leaf": "ba41694c725cd8075bb0c2bec46f29e019f615f999655177ac9ca36eb64610f2",
+      "comment": "an empty file still produces a leaf (the leaf commits to the path)"
+    },
+    {
+      "relpath": "content/naïve.txt",
+      "content_utf8": "café\n",
+      "expected_leaf": "143c888458b683ab04f1e0e23c9aa927ff0780b2955a3a48f2c63ce2f62a9e7f",
+      "comment": "the relpath is hashed as UTF-8 bytes"
+    }
+  ],
+  "nodes": [
+    {
+      "left": "7048fb2e31b2ef3f932ec77a2dccc3afd2381a780766287fc89b35981de41558",
+      "right": "ba41694c725cd8075bb0c2bec46f29e019f615f999655177ac9ca36eb64610f2",
+      "expected_node": "06131758c9a73854c7af9a42479065bdbc1c0ebab39be00f50ff1c3d77565955"
+    }
+  ],
+  "trees": [
+    {
+      "name": "empty",
+      "files": {},
+      "expected_root": "48fc721fbbc172e0925fa27af1671de225ba927134802998b10a1568a188652b",
+      "comment": "no covered files: root = BLAKE3(0x01)"
+    },
+    {
+      "name": "single_file",
+      "files": {
+        "content/test.txt": "hello world\n"
+      },
+      "expected_root": "7048fb2e31b2ef3f932ec77a2dccc3afd2381a780766287fc89b35981de41558",
+      "comment": "one leaf: the root IS the leaf hash (RFC 6962 promotion)"
+    },
+    {
+      "name": "two_files",
+      "files": {
+        "content/a.txt": "aaa\n",
+        "content/b.txt": "bbb\n"
+      },
+      "expected_root": "4e987438705f9aa7a927c933f18e32497689417f8d6fb6d4580d300f04e1d9db"
+    },
+    {
+      "name": "three_files_odd_promotion",
+      "files": {
+        "content/a.txt": "aaa\n",
+        "content/b.txt": "bbb\n",
+        "content/c.txt": "ccc\n"
+      },
+      "expected_root": "14224dff5120d161c1f8af3b0d1d7f492e666e999a2e96da793bf7e6a18ec966",
+      "comment": "the odd leaf is promoted UNCHANGED, never duplicated: root = node(node(a,b), c)"
+    },
+    {
+      "name": "path_sort_is_bytewise",
+      "files": {
+        "content/Z.txt": "z\n",
+        "content/a.txt": "a\n"
+      },
+      "expected_root": "8647a0aabece4be9b173e97ee476bde9b2ac30af74f2ca536a7ddd9a7bf3d201",
+      "comment": "'Z' (0x5A) sorts before 'a' (0x61) in UTF-8 byte order"
+    }
+  ]
+}
