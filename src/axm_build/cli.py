@@ -26,6 +26,7 @@ from axm_verify.identity import (
 )
 
 from .jsonl import canonical_json_bytes, write_table
+from .compiler_generic import _guard_out_dir_wipe
 from .merkle import compute_merkle_root
 from .schemas import CLAIMS_SCHEMA, ENTITIES_SCHEMA, PROVENANCE_SCHEMA, SPANS_SCHEMA
 from .sign import (
@@ -131,6 +132,7 @@ def _build_gold_shard(source_md: Path, outdir: Path, secret_key: bytes) -> Dict[
 
     shard_dir = outdir
     if shard_dir.exists():
+        _guard_out_dir_wipe(shard_dir)
         shutil.rmtree(shard_dir)
     for sub in ("content", "graph", "evidence", "sig"):
         (shard_dir / sub).mkdir(parents=True, exist_ok=True)
@@ -255,6 +257,7 @@ def _compile_from_candidates(
     """
     shard_dir = outdir
     if shard_dir.exists():
+        _guard_out_dir_wipe(shard_dir)
         shutil.rmtree(shard_dir)
     for sub in ("content", "graph", "evidence", "sig"):
         (shard_dir / sub).mkdir(parents=True, exist_ok=True)
