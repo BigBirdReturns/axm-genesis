@@ -1,7 +1,7 @@
 # AXM Three-Layer Architecture
 
 **Status**: Normative
-**Date**: 2026-02-21
+**Date**: 2026-02-21 (updated 2026-07-03 for the v1.0 reset, RFC 0002)
 
 ---
 
@@ -29,13 +29,15 @@ produces and Genesis seals.
 
 **Contents**: Entities (nouns), claims (SPO triples), evidence (byte-range
 spans into source text), provenance (source hash + byte offsets). Optionally:
-ext/locators (page/paragraph positions), ext/coords (semantic coordinates),
-ext/temporal (validity windows), ext/references (cross-shard links).
+ext/locators@1 (page/paragraph positions), ext/temporal@1 (validity windows),
+ext/references@1 (cross-shard links) — and, for binary-stream domains,
+ext/streams@1 under the `embodied@1` profile.
 
 **Lifecycle**: A document enters Forge. The extraction pipeline segments it,
 extracts claims (tier 0–3), binds evidence to byte ranges, and emits
-candidates.jsonl. Genesis compiles this into parquet tables, computes the
-Merkle root, and signs with ML-DSA-44. The shard is sealed. It never changes.
+candidates.jsonl. Genesis compiles this into canonical JSONL tables, computes
+the BLAKE3 Merkle root, and signs with the hybrid `axm-hybrid1` suite
+(Ed25519 ‖ ML-DSA-44). The shard is sealed. It never changes.
 
 **Examples**:
 - FM 21-11 (military field medicine) → hemorrhage treatment claims
@@ -43,9 +45,11 @@ Merkle root, and signs with ML-DSA-44. The shard is sealed. It never changes.
 - SEC 10-K filing → financial claims at tier-0 (structured extraction)
 - XBRL financial data → direct candidates, no LLM involved
 
-**Identity**: A knowledge shard's identity is its Merkle root. Same content,
-same key, same root. Different content, different root. This is the anchor
-that journal shards point back to.
+**Identity**: A knowledge shard's identity is **derived, never stored**:
+`sh1_` + BLAKE3 of the canonical manifest bytes (spec §9). The manifest
+commits to the Merkle root, which commits to every content byte — so same
+content, same key, same id; different content, different id. This derived id
+is the anchor that journal shards point back to.
 
 ---
 
@@ -55,8 +59,8 @@ Journal shards record what happened when knowledge shards were used. They
 capture the full decision trace: what was queried, what was retrieved, what
 was evaluated, what was rejected, and what was concluded.
 
-**Contents**: Same parquet tables as knowledge shards, but the entities and
-claims encode operational events instead of reference facts.
+**Contents**: Same canonical JSONL tables as knowledge shards, but the
+entities and claims encode operational events instead of reference facts.
 
 Entity examples:
 - `query:2026-02-21T03:00:00Z:tourniquet-application`
@@ -77,11 +81,11 @@ was used. A journal shard proves not just the conclusion but the reasoning
 path, including the dead ends.
 
 **Cross-shard references**: Each journal entry points back to the knowledge
-shard(s) consulted via ext/references@1.parquet:
+shard(s) consulted via ext/references@1.jsonl (dst_shard_id in `sh1_` form):
 
 ```
-src_claim_id    relation_type    dst_shard_id           dst_object_type  dst_object_id
-claim:abc       retrieved_from   shard_blake3_<root>    claim            claim:def
+src_claim_id    relation_type    dst_shard_id      dst_object_type  dst_object_id
+claim:abc       retrieved_from   sh1_<64 hex>      claim            claim:def
 ```
 
 This creates a verifiable chain: journal shard → knowledge shard → source
@@ -117,7 +121,7 @@ protocol does not prescribe it.
 
 ```jsonl
 {"ts": 1740100800.123, "type": "query", "text": "How do I stop arterial bleeding?", "session": "s:abc"}
-{"ts": 1740100800.456, "type": "retrieval", "shard": "shard_blake3_...", "claims": ["c:1", "c:2", "c:3"]}
+{"ts": 1740100800.456, "type": "retrieval", "shard": "sh1_...", "claims": ["c:1", "c:2", "c:3"]}
 {"ts": 1740100800.789, "type": "gate", "gate_type": "threshold", "claim": "c:1", "score": 0.92, "threshold": 0.5, "result": "pass"}
 {"ts": 1740100800.890, "type": "gate", "gate_type": "threshold", "claim": "c:3", "score": 0.31, "threshold": 0.5, "result": "reject"}
 {"ts": 1740100801.234, "type": "gate", "gate_type": "constraint", "rule": "roe:medical", "action": "apply-tourniquet", "result": "permit"}
@@ -190,5 +194,8 @@ Each gate type has defined inputs, outputs, and semantics:
 The protocol defines ONE thing: how to seal a collection of facts (whatever
 their semantic type) into a cryptographically verified, content-addressed
 container. Knowledge shards, journal shards, and future shard types all use
-the same container. The three-layer distinction is a convention, not a
-protocol feature.
+the same container. The domain spokes are worked examples of that reuse:
+axm-show seals mission authorization, axm-fleet a sustainment lifecycle (a
+`supersedes` chain), axm-sfn hardware custody (TPM-bound journals) — one
+kernel, one container, three record types. The three-layer distinction is a
+convention, not a protocol feature.

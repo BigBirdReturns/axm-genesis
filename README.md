@@ -21,6 +21,10 @@ verifier's exit codes are frozen and exercised by the conformance suite.
 | [axm-genesis](https://github.com/BigBirdReturns/axm-genesis) | The frozen cryptographic kernel — compiles and verifies signed knowledge shards | [site](https://bigbirdreturns.github.io/axm-genesis/) |
 | [axm-core](https://github.com/BigBirdReturns/axm-core) | The runtime — Spectra query engine, Forge extraction, spoke host | [site](https://bigbirdreturns.github.io/axm-core/) |
 | [axm-chat](https://github.com/BigBirdReturns/axm-chat) | The first spoke — turns conversation exports into verified memory | [site](https://bigbirdreturns.github.io/axm-chat/) |
+| [axm-show](https://github.com/BigBirdReturns/axm-show) | Spoke — seals drone-show *mission authorization* (what may fly, under which ceiling) | [site](https://bigbirdreturns.github.io/axm-show/) |
+| [axm-embodied](https://github.com/BigBirdReturns/axm-embodied) | Spoke — seals *embodied run evidence* (binary sensor streams, `embodied@1` profile) | [site](https://bigbirdreturns.github.io/axm-embodied/) |
+| [axm-fleet](https://github.com/BigBirdReturns/axm-fleet) | Spoke — seals fleet *lifecycle* (a `supersedes` chain of node sustainment records) | [site](https://bigbirdreturns.github.io/axm-fleet/) |
+| [axm-sfn](https://github.com/BigBirdReturns/axm-sfn) | Spoke — seals *hardware custody* (TPM-bound session journals) | [site](https://bigbirdreturns.github.io/axm-sfn/) |
 
 Genesis compiles and signs; everything else reads. That boundary is the
 invariant that makes long-term verification possible.

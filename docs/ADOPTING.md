@@ -304,6 +304,41 @@ ext/lineage@1.jsonl:
 {"action":"supersede","note":"corrected tiers","supersedes_shard_id":"sh1_f4d4ff4f...babdfc7","timestamp":"2026-07-02T01:00:00Z"}
 ```
 
+### Spoke-owned content and extension tables — one pass, never a reseal
+
+Domains that seal more than text — binary sensor streams, packet journals,
+hardware-attestation blobs — hand that evidence to the **same** compiler call,
+never a post-compile edit. `CompilerConfig` takes:
+
+- `extra_content` — additional `content/` files (e.g. `cam_latents.bin`,
+  `packets.bin`), copied verbatim, listed in the `sources` bijection, and
+  sealed as ordinary Merkle leaves;
+- `extra_ext` — `{extension_id: rows}` for **registered** extensions the spoke
+  computed itself (ids the kernel derives — `locators@1`/`references@1`/
+  `temporal@1`/`lineage@1` — are refused, to avoid a two-writer race).
+
+Binary never rides in a JSONL row. The convention (RFC 0006) is
+**index-into-content**: put the bytes in `content/` via `extra_content` and let
+the table reference them by `(file, offset, length)` + a `sha256` — exactly how
+`streams@1` indexes `cam_latents.bin`. A flipped evidence byte then fails as
+`E_MERKLE_MISMATCH` under the stock verifier, with no domain logic.
+
+The registered non-core extensions today:
+
+| id | purpose | RFC |
+|---|---|---|
+| `streams@1` | embodied binary stream index (`embodied@1` profile) | — |
+| `attestations@1` | timestamp *proof-of-when* anchors over other shards | 0005 |
+| `packets@1` | verbatim canonical packet bytes for a custody journal | 0006 |
+| `tpm-attestation@1` | TPM hardware trust-chain evidence, indexed into content/ | 0006 |
+
+Adding a new one is a one-line `EXTENSION_REGISTRY` entry behind an RFC
+(`extra_ext` rejects unregistered ids). **Never** write files into a sealed
+shard and re-hash/re-sign it yourself — that reimplements four frozen kernel
+surfaces (the anti-pattern axm-sfn carried and RFC 0006 retires). If you must
+migrate an *existing* shard's signature suite, that is RFC 0004 (additive
+reseal layers) — a kernel operation, not a spoke's.
+
 ## 7. Profiles
 
 A **profile** is a named, versioned set of *additional checks* over
