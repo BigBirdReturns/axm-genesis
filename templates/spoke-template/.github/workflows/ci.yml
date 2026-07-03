@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: BigBirdReturns/axm-genesis
-          ref: bdeb2ba07f83ff3fae07e5beb335034f4853a73f   # bump to the kernel commit/tag you build against
+          ref: fffe7cf0f1c78c8c4bea5f303099db80f7c53ba3   # bump to the kernel commit/tag you build against (must contain tools/drift-check.sh)
           path: axm-genesis
 
       - uses: actions/setup-python@v5

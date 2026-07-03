@@ -21,6 +21,7 @@ src/axm_spoke_template/cli.py        click group: build + verify passthrough
 tests/test_roundtrip.py              build → PASS → tamper → FAIL, throwaway keys in tmp
 tests/fixtures/sample.txt            fixture source text
 .github/workflows/ci.yml             self-verifying CI: tests + kernel-boundary drift check
+.github/workflows/pages.yml          GitHub Actions Pages deploy (guarded: no-op until you add index.html)
 ```
 
 ## Run it
@@ -81,7 +82,17 @@ Because the check lives in genesis, every spoke runs the *same* current rules
 — the lint can't drift either. After the v1.0.0 PyPI release, drop the
 genesis checkout and float on `axm-genesis[mldsa-compat]>=1.0.0,<2`: a 1.x
 kernel bump can't break your shards (COMPATIBILITY.md), so you never sync
-pins by hand.
+pins by hand. (The CI's `ref:` must point at a kernel commit that contains
+`tools/drift-check.sh`; the pin shipped here already does.)
+
+## Publishing a Pages site
+
+`.github/workflows/pages.yml` deploys a GitHub Pages site via GitHub Actions
+(set Settings → Pages → Source to "GitHub Actions"). It is **guarded**: with
+no root `index.html` — the state of a fresh code-only spoke — the deploy is
+skipped and the job stays green. Add an `index.html` (see the ecosystem house
+style in `axm-genesis/index.html`) and it publishes on the next push to the
+default branch. Nothing to wire up; it activates when a site exists.
 
 ## The rule this template exists to teach
 

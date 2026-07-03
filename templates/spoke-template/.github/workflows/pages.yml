@@ -1,0 +1,52 @@
+# Publish a GitHub Pages site via GitHub Actions — GUARDED for a code-only spoke.
+#
+# Set Settings -> Pages -> Source to "GitHub Actions" to use this. A fresh spoke
+# has no index.html, so the deploy steps are skipped (the job stays green and
+# publishes nothing). The moment you add an index.html at the repo root, this
+# workflow starts publishing it on every push to the default branch. That is why
+# the template can ship Pages by default without deploying an empty site.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deployment at a time; don't cancel a running publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is there a site to publish?
+        id: site
+        run: |
+          if [ -f index.html ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No root index.html — skipping Pages deploy. Add one to publish a site."
+          fi
+
+      - if: steps.site.outputs.present == 'true'
+        uses: actions/configure-pages@v5
+      - if: steps.site.outputs.present == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        if: steps.site.outputs.present == 'true'
+        uses: actions/deploy-pages@v4
