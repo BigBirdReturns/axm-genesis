@@ -2,7 +2,7 @@
 
 This is the on-ramp for a new project that wants to produce AXM shards.
 Every command in this document was executed against the current tree
-(commit `9c0b749`, `axm-genesis 1.0.0rc1`) before it was written down;
+(commit `bdeb2ba`, `axm-genesis 1.0.0rc1`) before it was written down;
 outputs shown are real. A copy-out-and-rename starter package lives at
 [`templates/spoke-template/`](../templates/spoke-template/).
 
@@ -40,7 +40,7 @@ you built against:
 
 ```toml
 dependencies = [
-  "axm-genesis[mldsa-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@9c0b749c3843d3bd7b341117ce6971e0c6d30418",
+  "axm-genesis[mldsa-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@bdeb2ba07f83ff3fae07e5beb335034f4853a73f",
 ]
 ```
 
