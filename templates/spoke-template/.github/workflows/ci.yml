@@ -1,0 +1,53 @@
+# Self-verifying spoke CI — the anti-drift habit every AXM spoke ships.
+#
+# It checks the spoke out ALONGSIDE the pinned axm-genesis kernel, installs the
+# kernel, runs the spoke's tests (build -> verify PASS -> tamper -> FAIL -> wrong
+# key -> E_SIG_INVALID), and runs the shared drift check that lives IN genesis
+# (tools/drift-check.sh) so the lint itself can never drift from the contract.
+# A spoke that imports a removed kernel symbol, embeds a signing key, stores an
+# identity, or ships Parquet tables goes RED here — at push, in this one repo.
+# That is how the ecosystem stays synced without loading every repo to look for
+# drift: each spoke finds its own.
+#
+# Pre-v1.0.0: the kernel is pinned by the `ref:` below — keep it in sync with the
+# pin in pyproject.toml. AFTER the v1.0.0 PyPI release you can delete the
+# axm-genesis checkout and let `pip install -e .[dev]` resolve
+# axm-genesis[mldsa-compat]>=1.0.0,<2 from PyPI; COMPATIBILITY.md guarantees any
+# 1.x kernel verifies your shards, so a kernel bump never breaks this build. Keep
+# the drift-check step (fetch the script from a pinned kernel tag).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: spoke
+
+      - uses: actions/checkout@v4
+        with:
+          repository: BigBirdReturns/axm-genesis
+          ref: bdeb2ba07f83ff3fae07e5beb335034f4853a73f   # bump to the kernel commit/tag you build against
+          path: axm-genesis
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the kernel and the spoke
+        run: |
+          python -m pip install --upgrade pip
+          pip install './axm-genesis[mldsa-compat]'
+          pip install -e './spoke[dev]'
+
+      - name: Conformance tests (build -> verify -> tamper -> FAIL)
+        working-directory: spoke
+        run: python -m pytest tests/ -q
+
+      - name: Drift check (kernel-boundary lint, sourced from genesis)
+        run: bash axm-genesis/tools/drift-check.sh spoke

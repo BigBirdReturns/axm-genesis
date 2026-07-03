@@ -20,6 +20,7 @@ src/axm_spoke_template/spoke.py      build_shard() — the one function a spoke 
 src/axm_spoke_template/cli.py        click group: build + verify passthrough
 tests/test_roundtrip.py              build → PASS → tamper → FAIL, throwaway keys in tmp
 tests/fixtures/sample.txt            fixture source text
+.github/workflows/ci.yml             self-verifying CI: tests + kernel-boundary drift check
 ```
 
 ## Run it
@@ -58,7 +59,29 @@ Per the naming convention in SPOKE_API.md (`axm-<domain>` / `axm_<domain>`
    belong to axm-genesis and are never reimplemented in a spoke.
 5. Update the publisher defaults (`publisher_id`, `publisher_name`) and the
    axm-genesis pin comment to whatever you actually depend on.
-6. Keep `tests/test_roundtrip.py` green and wire `pytest` into CI.
+6. Keep `tests/test_roundtrip.py` green. CI is already wired
+   (`.github/workflows/ci.yml`) — just bump its `ref:` to the kernel commit
+   you pin in `pyproject.toml`.
+
+## Stay synced with the kernel (CI + drift check)
+
+`.github/workflows/ci.yml` is the anti-drift habit: on every push it checks
+your spoke out beside the pinned kernel, installs it, runs the roundtrip
+tests, and runs `tools/drift-check.sh` **from genesis** against your tree.
+Drift becomes a red build in this one repo — caught at push — instead of
+silent rot you rediscover a year later. The lint fails the build if a spoke:
+
+- hardcodes a signing key/seed (keys come from `axm-build keygen`);
+- reimplements a frozen kernel surface (signing, Merkle, manifest encoding);
+- stores a derived identity (`shard_blake3_…` / a stored `shard_id`); <!-- drift-ok: documenting the rule -->
+- ships Parquet shard tables (v1 tables are canonical JSONL); or
+- names a retired suite (`SUITE_MLDSA44` / `axm-blake3-mldsa44`). <!-- drift-ok: documenting the rule -->
+
+Because the check lives in genesis, every spoke runs the *same* current rules
+— the lint can't drift either. After the v1.0.0 PyPI release, drop the
+genesis checkout and float on `axm-genesis[mldsa-compat]>=1.0.0,<2`: a 1.x
+kernel bump can't break your shards (COMPATIBILITY.md), so you never sync
+pins by hand.
 
 ## The rule this template exists to teach
 
