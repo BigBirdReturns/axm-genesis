@@ -34,18 +34,18 @@ ledger — one at a time.** Do not fleet-edit blind.
 ## Ledger
 
 Class: **K** kernel · **R** runtime · **S** spoke · **D** demo · **A** archive.
-The aligned rows land on branch `claude/genesis-docs-rfc-sync-t5eywu`;
-"pending merge" = the workflows activate when that branch merges to `main`.
+Alignment work landed on branch `claude/genesis-docs-rfc-sync-t5eywu` per repo;
+"merged" = that branch reached `main`, so the CI + Pages workflows are live.
 
 | Repo | Class | Site | CI | Genesis relationship | Drift | Status |
 |------|:---:|---|---|---|---|---|
-| axm-genesis | K | `pages.yml` ✓ | own CI (conformance, gold, lint) | is the kernel | n/a | aligned · pending merge |
+| axm-genesis | K | `pages.yml` ✓ | own CI (conformance, gold, lint) | is the kernel | n/a | aligned · merged |
 | axm-core | R | ? | ? | runtime hub — pins/hosts the kernel | ? | **not yet aligned** |
 | axm-chat | S | `pages.yml` ✓ | tests + drift | git-pin `@8d211ca` (RFC 0007) | clean | aligned · merged |
-| axm-show | S | `pages.yml` ✓ | tests + compile→verify + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · pending merge |
+| axm-show | S | `pages.yml` ✓ | tests + compile→verify + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · merged |
 | axm-embodied | S | ? | ? | ? | ? | **not yet aligned** |
-| axm-fleet | S | `pages.yml` ✓ | tests + four-beat demo + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · pending merge |
-| axm-sfn | S | `pages.yml` ✓ | Py tests + Go build/vet + drift | git-pin `@fffe7cf` | clean | aligned · pending merge |
+| axm-fleet | S | `pages.yml` ✓ | tests + four-beat demo + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · merged |
+| axm-sfn | S | `pages.yml` ✓ | Py tests + Go build/vet + drift | git-pin `@fffe7cf` | clean | aligned · merged |
 | templates/spoke-template | K asset | `pages.yml` ✓ (guarded) | tests + drift | ref `fffe7cf` | clean | canonical source new spokes inherit |
 
 ## Notes
