@@ -48,6 +48,20 @@ Alignment work landed on branch `claude/genesis-docs-rfc-sync-t5eywu` per repo;
 | axm-sfn | S | `pages.yml` ✓ | Py tests + Go build/vet + drift | git-pin `@fffe7cf` | clean | aligned · merged |
 | templates/spoke-template | K asset | `pages.yml` ✓ (guarded) | tests + drift | ref `fffe7cf` | clean | canonical source new spokes inherit |
 
+## Kernel commit policy
+
+Pre-release repos may pin different genesis commits when their required kernel surface differs.
+
+- `fffe7cf` is the v1 alignment floor used by repos that need the anti-drift tooling, v1 compiler surface, `streams@1`, and the embodied/profile support already present there.
+- `8d211ca` is the RFC 0007 floor used by `axm-chat`, because chat depends on `episodes@1` and `engineering@1`.
+- These are temporary pre-tag pins, not divergent kernel lines.
+
+At the v1.0.0 release ceremony, all spokes should move from commit pins to the release range:
+
+`axm-genesis[mldsa-compat]>=1.0.0,<2`
+
+After that, 1.x compatibility is governed by the release contract rather than per-repo SHA uniformity. Do not repin a spoke merely for cosmetic consistency before the tag; repin only when the repo needs a kernel surface introduced after its current floor.
+
 ## Notes
 
 - **Pages source is a repo SETTING, separate from `pages.yml`.** The workflow
