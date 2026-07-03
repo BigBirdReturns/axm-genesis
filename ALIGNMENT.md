@@ -34,18 +34,18 @@ ledger — one at a time.** Do not fleet-edit blind.
 ## Ledger
 
 Class: **K** kernel · **R** runtime · **S** spoke · **D** demo · **A** archive.
-The aligned rows land on branch `claude/genesis-docs-rfc-sync-t5eywu`;
-"pending merge" = the workflows activate when that branch merges to `main`.
+Alignment work landed on branch `claude/genesis-docs-rfc-sync-t5eywu` per repo;
+"merged" = that branch reached `main`, so the CI + Pages workflows are live.
 
 | Repo | Class | Site | CI | Genesis relationship | Drift | Status |
 |------|:---:|---|---|---|---|---|
-| axm-genesis | K | `pages.yml` ✓ | own CI (conformance, gold, lint) | is the kernel | n/a | aligned · pending merge |
+| axm-genesis | K | `pages.yml` ✓ | own CI (conformance, gold, lint) | is the kernel | n/a | aligned · merged |
 | axm-core | R | ? | ? | runtime hub — pins/hosts the kernel | ? | **not yet aligned** |
-| axm-chat | S | ? | ? | ? | ? | **not yet aligned** — first spoke, may predate the v1 reset (expect drift) |
-| axm-show | S | `pages.yml` ✓ | tests + compile→verify + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · pending merge |
+| axm-chat | S | `pages.yml` ✓ | tests + drift | git-pin `@8d211ca` (RFC 0007) | clean | aligned · merged |
+| axm-show | S | `pages.yml` ✓ | tests + compile→verify + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · merged |
 | axm-embodied | S | ? | ? | ? | ? | **not yet aligned** |
-| axm-fleet | S | `pages.yml` ✓ | tests + four-beat demo + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · pending merge |
-| axm-sfn | S | `pages.yml` ✓ | Py tests + Go build/vet + drift | git-pin `@fffe7cf` | clean | aligned · pending merge |
+| axm-fleet | S | `pages.yml` ✓ | tests + four-beat demo + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · merged |
+| axm-sfn | S | `pages.yml` ✓ | Py tests + Go build/vet + drift | git-pin `@fffe7cf` | clean | aligned · merged |
 | templates/spoke-template | K asset | `pages.yml` ✓ (guarded) | tests + drift | ref `fffe7cf` | clean | canonical source new spokes inherit |
 
 ## Notes
@@ -54,9 +54,13 @@ The aligned rows land on branch `claude/genesis-docs-rfc-sync-t5eywu`;
   publishes; the setting (`build_type=workflow`) tells GitHub to use it. You
   reported flipping all current repos to GitHub Actions, so `bootstrap-pages.sh`
   is for *future* repos (or any not yet flipped).
-- **The three "not yet aligned" repos are outside this session's checkout
-  scope.** Run `align-spoke.sh` against each to fill its row. `axm-chat`
-  especially may carry pre-reset drift (old suite labels, Parquet, stored ids).
+- **The two "not yet aligned" repos (axm-core, axm-embodied) are outside this
+  session's checkout scope.** Run `align-spoke.sh` against each to fill its row.
+  `axm-chat` did carry the expected pre-reset drift (Parquet ext tables, a
+  post-compile reseal, stale suite labels); it was reconciled onto the one-pass
+  kernel path under RFC 0007 (episodes@1/engineering@1 as canonical JSONL via
+  `extra_ext`, no reseal) and merged — so it is now the worked example of what
+  aligning a pre-reset spoke looks like.
 - **Post-PyPI**, spokes float on the semver range and a 1.x kernel bump can't
   break them (COMPATIBILITY.md) — so the pin-bump step disappears for minor/patch
   kernel work. Keep the drift-check step (fetch the script from a pinned kernel
