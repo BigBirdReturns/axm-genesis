@@ -47,6 +47,16 @@ resealing in spoke code.
   two-pass reseal. The TPM table is named `tpm-attestation@1` to avoid
   colliding with RFC 0005's unrelated `attestations@1`. No kernel change.
 
+- **RFC 0007 (PROPOSED): chat extensions** — registers `episodes@1`
+  (distilled conversational episode index) and `engineering@1` (gated
+  engineering-lens rows, joined on `episode_id`) in `EXTENSION_REGISTRY`.
+  Both are canonical JSONL: array-valued domain fields ride as JSON-array
+  strings, `confidence` as a decimal string, absent optionals as `""`, and
+  `shard_id` is a foreign `sh1_` source reference (never a self id). The
+  conversation spoke (`axm-chat`) seals them through the one-pass `extra_ext`
+  compiler instead of post-compile Parquet injection + reseal. No kernel
+  change; the verifier stays opaque to the tables' semantics.
+
 ## [1.0.0rc1] - 2026-07-02 — The v1.0 reset (RFC 0002)
 
 Everything shipped before this entry is reclassified as the **v0.x

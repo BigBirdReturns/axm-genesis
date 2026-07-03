@@ -331,6 +331,8 @@ The registered non-core extensions today:
 | `attestations@1` | timestamp *proof-of-when* anchors over other shards | 0005 |
 | `packets@1` | verbatim canonical packet bytes for a custody journal | 0006 |
 | `tpm-attestation@1` | TPM hardware trust-chain evidence, indexed into content/ | 0006 |
+| `episodes@1` | distilled conversational episode index (array fields as JSON strings) | 0007 |
+| `engineering@1` | gated engineering-lens rows over `episodes@1` (`confidence` a decimal string) | 0007 |
 
 Adding a new one is a one-line `EXTENSION_REGISTRY` entry behind an RFC
 (`extra_ext` rejects unregistered ids). **Never** write files into a sealed
