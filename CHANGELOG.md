@@ -37,6 +37,16 @@ resealing in spoke code.
   `(target_shard_id, kind, proof_path)`). No kernel change; the verifier
   never parses proofs.
 
+- **RFC 0006 (PROPOSED): custody evidence extensions** — registers
+  `packets@1` (verbatim canonical packet bytes, indexed into `content/`)
+  and `tpm-attestation@1` (TPM trust-chain evidence, one row per stored
+  blob, indexed by `(file, offset, length, sha256)`) in
+  `EXTENSION_REGISTRY`. Both are index-into-content canonical JSONL — no
+  binary in the row — so the custody spoke (`axm-sfn`) seals its evidence
+  through the one-pass `extra_content`/`extra_ext` compiler instead of a
+  two-pass reseal. The TPM table is named `tpm-attestation@1` to avoid
+  colliding with RFC 0005's unrelated `attestations@1`. No kernel change.
+
 ## [1.0.0rc1] - 2026-07-02 — The v1.0 reset (RFC 0002)
 
 Everything shipped before this entry is reclassified as the **v0.x

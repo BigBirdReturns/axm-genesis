@@ -117,6 +117,51 @@ ATTESTATIONS_SCHEMA = {
 ATTESTATIONS_SORT_KEY = ("target_shard_id", "kind", "proof_path")
 
 # ---------------------------------------------------------------------------
+# packets@1 — verbatim canonical packet bytes for a custody journal (RFC 0006)
+# ---------------------------------------------------------------------------
+# The archival rule (DURABILITY.md §5.3) is hash-over-STORED-bytes: the exact
+# canonical bytes that were TPM-signed live in content/ as an ordinary Merkle
+# leaf, and this table INDEXES them by (file, offset, length) so a future
+# verifier recomputes packet_sha256 over stored bytes and never has to
+# reproduce a canonicalization. No binary rides in the JSONL row.
+
+PACKETS_SCHEMA = {
+    "seq": "integer",             # packet sequence number (primary key)
+    "file": "string",             # content path holding the bytes, e.g. "content/packets.bin"
+    "offset": "integer",          # byte offset of the packet in that file
+    "length": "integer",          # packet byte length
+    "packet_sha256": "string",    # SHA-256 hex of the verbatim canonical packet bytes
+}
+PACKETS_SORT_KEY = "seq"
+
+# ---------------------------------------------------------------------------
+# tpm-attestation@1 — TPM hardware trust-chain evidence (RFC 0006)
+# ---------------------------------------------------------------------------
+# One row per stored evidence blob. Every binary blob (TPMT_SIGNATURE,
+# TPM2B_ATTEST, quote nonce, TPM2B_PUBLIC key area, DER cert) lives in
+# content/ and is indexed here by (file, offset, length) + its sha256 —
+# never inlined. key/cert rows carry seq=0 (they are not sequence-bound);
+# pcrs is a JSON array string on a quote's attest row, "" otherwise.
+# (Registered under this name so it never collides with attestations@1,
+# which is RFC 0005's unrelated proof-of-WHEN table.)
+
+TPM_ATTESTATION_SCHEMA = {
+    "kind": "string",             # packet_sig | quote | sign_pub | ak_pub | ek_cert
+    "seq": "integer",             # sequence bound; 0 for non-sequence key/cert rows
+    "field": "string",            # signature | attest | nonce | public | certificate
+    "alg": "string",              # algorithm id, e.g. "tpm2:rsapss-2048-sha256:tpmt-signature"
+    "key_fingerprint": "string",  # SHA-256 hex of the covering key's public-area bytes
+    "file": "string",             # content path holding this blob
+    "offset": "integer",          # byte offset of the blob in that file
+    "length": "integer",          # blob byte length
+    "sha256": "string",           # SHA-256 hex of the stored blob bytes
+    "pcrs": "string",             # JSON array of quoted PCR indices; "" when absent
+}
+# (kind, seq, field, offset) is unique: distinct blobs never share a byte
+# offset in the same file, so read-back stays strictly ordered.
+TPM_ATTESTATION_SORT_KEY = ("kind", "seq", "field", "offset")
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 # "unique": True when the sort key is a primary key (a duplicate sort key
@@ -166,5 +211,19 @@ EXTENSION_REGISTRY = {
         "sort_key": ATTESTATIONS_SORT_KEY,
         "unique": True,
         "description": "Timestamp anchors over other shards (RFC 0005)",
+    },
+    "packets@1": {
+        "file": "packets@1.jsonl",
+        "schema": PACKETS_SCHEMA,
+        "sort_key": PACKETS_SORT_KEY,
+        "unique": True,
+        "description": "Verbatim canonical packet bytes for a custody journal (RFC 0006)",
+    },
+    "tpm-attestation@1": {
+        "file": "tpm-attestation@1.jsonl",
+        "schema": TPM_ATTESTATION_SCHEMA,
+        "sort_key": TPM_ATTESTATION_SORT_KEY,
+        "unique": True,
+        "description": "TPM hardware trust-chain evidence, indexed into content/ (RFC 0006)",
     },
 }

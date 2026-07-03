@@ -2,7 +2,7 @@
 
 This is the on-ramp for a new project that wants to produce AXM shards.
 Every command in this document was executed against the current tree
-(commit `9c0b749`, `axm-genesis 1.0.0rc1`) before it was written down;
+(commit `bdeb2ba`, `axm-genesis 1.0.0rc1`) before it was written down;
 outputs shown are real. A copy-out-and-rename starter package lives at
 [`templates/spoke-template/`](../templates/spoke-template/).
 
@@ -40,7 +40,7 @@ you built against:
 
 ```toml
 dependencies = [
-  "axm-genesis[mldsa-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@9c0b749c3843d3bd7b341117ce6971e0c6d30418",
+  "axm-genesis[mldsa-compat] @ git+https://github.com/BigBirdReturns/axm-genesis@bdeb2ba07f83ff3fae07e5beb335034f4853a73f",
 ]
 ```
 
@@ -303,6 +303,41 @@ manifest.supersedes = ["sh1_f4d4ff4f...babdfc7"]
 ext/lineage@1.jsonl:
 {"action":"supersede","note":"corrected tiers","supersedes_shard_id":"sh1_f4d4ff4f...babdfc7","timestamp":"2026-07-02T01:00:00Z"}
 ```
+
+### Spoke-owned content and extension tables — one pass, never a reseal
+
+Domains that seal more than text — binary sensor streams, packet journals,
+hardware-attestation blobs — hand that evidence to the **same** compiler call,
+never a post-compile edit. `CompilerConfig` takes:
+
+- `extra_content` — additional `content/` files (e.g. `cam_latents.bin`,
+  `packets.bin`), copied verbatim, listed in the `sources` bijection, and
+  sealed as ordinary Merkle leaves;
+- `extra_ext` — `{extension_id: rows}` for **registered** extensions the spoke
+  computed itself (ids the kernel derives — `locators@1`/`references@1`/
+  `temporal@1`/`lineage@1` — are refused, to avoid a two-writer race).
+
+Binary never rides in a JSONL row. The convention (RFC 0006) is
+**index-into-content**: put the bytes in `content/` via `extra_content` and let
+the table reference them by `(file, offset, length)` + a `sha256` — exactly how
+`streams@1` indexes `cam_latents.bin`. A flipped evidence byte then fails as
+`E_MERKLE_MISMATCH` under the stock verifier, with no domain logic.
+
+The registered non-core extensions today:
+
+| id | purpose | RFC |
+|---|---|---|
+| `streams@1` | embodied binary stream index (`embodied@1` profile) | — |
+| `attestations@1` | timestamp *proof-of-when* anchors over other shards | 0005 |
+| `packets@1` | verbatim canonical packet bytes for a custody journal | 0006 |
+| `tpm-attestation@1` | TPM hardware trust-chain evidence, indexed into content/ | 0006 |
+
+Adding a new one is a one-line `EXTENSION_REGISTRY` entry behind an RFC
+(`extra_ext` rejects unregistered ids). **Never** write files into a sealed
+shard and re-hash/re-sign it yourself — that reimplements four frozen kernel
+surfaces (the anti-pattern axm-sfn carried and RFC 0006 retires). If you must
+migrate an *existing* shard's signature suite, that is RFC 0004 (additive
+reseal layers) — a kernel operation, not a spoke's.
 
 ## 7. Profiles
 
