@@ -162,6 +162,54 @@ TPM_ATTESTATION_SCHEMA = {
 TPM_ATTESTATION_SORT_KEY = ("kind", "seq", "field", "offset")
 
 # ---------------------------------------------------------------------------
+# episodes@1 — conversational episode index for a derived episodic shard (RFC 0007)
+# ---------------------------------------------------------------------------
+# One row per episode distilled from a source conversation shard. Canonical
+# JSONL is scalar-only, so array-valued domain fields (tags/people/…) are a
+# canonical JSON array of strings carried INSIDE a string value ("[]" when
+# empty; the kernel treats it opaquely, chat parses it after verification).
+# question_text is "" when absent (no nulls). shard_id is the sh1_ id of the
+# SOURCE shard — a foreign reference; a shard never records its own id.
+
+EPISODES_SCHEMA = {
+    "episode_id": "string",             # primary key, stable within the shard
+    "shard_id": "string",               # sh1_ id of the source conversation shard (foreign)
+    "batch_index": "integer",
+    "timestamp": "string",              # RFC 3339
+    "topic_tags": "string",             # JSON array of strings, e.g. ["home","repair"]
+    "people": "string",                 # JSON array of strings
+    "animals": "string",                # JSON array of strings
+    "tools_places_services": "string",  # JSON array of strings
+    "projects": "string",               # JSON array of strings
+    "question_text": "string",          # "" when none
+    "state": "string",                  # resolved | unresolved | abandoned | ongoing
+    "tone": "string",                   # positive | neutral | negative | stressed | relieved | mixed
+    "summary": "string",
+    "lens_hints": "string",             # JSON array of engineering|audit|reflect|general
+}
+EPISODES_SORT_KEY = "episode_id"
+
+# ---------------------------------------------------------------------------
+# engineering@1 — gated engineering-lens rows over episodes@1 (RFC 0007)
+# ---------------------------------------------------------------------------
+# A subset of episodes (those whose lens_hints include "engineering"), joinable
+# to episodes@1 on episode_id. confidence is a DECIMAL STRING in [0,1] —
+# canonical JSONL forbids floats, exactly as references@1.confidence. Array
+# fields as JSON-array strings; "" for an absent solution/rule.
+
+ENGINEERING_SCHEMA = {
+    "episode_id": "string",             # primary key; FK to episodes@1.episode_id
+    "shard_id": "string",               # sh1_ id of the source shard (foreign)
+    "problem_statement": "string",
+    "core_technologies": "string",      # JSON array of strings
+    "failed_attempts": "string",        # JSON array of strings
+    "solution_adopted": "string",       # "" when unresolved
+    "architectural_rule": "string",     # "" when none
+    "confidence": "string",             # decimal string in [0,1], e.g. "0.85"
+}
+ENGINEERING_SORT_KEY = "episode_id"
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 # "unique": True when the sort key is a primary key (a duplicate sort key
@@ -225,5 +273,19 @@ EXTENSION_REGISTRY = {
         "sort_key": TPM_ATTESTATION_SORT_KEY,
         "unique": True,
         "description": "TPM hardware trust-chain evidence, indexed into content/ (RFC 0006)",
+    },
+    "episodes@1": {
+        "file": "episodes@1.jsonl",
+        "schema": EPISODES_SCHEMA,
+        "sort_key": EPISODES_SORT_KEY,
+        "unique": True,
+        "description": "Conversational episode index for a derived episodic shard (RFC 0007)",
+    },
+    "engineering@1": {
+        "file": "engineering@1.jsonl",
+        "schema": ENGINEERING_SCHEMA,
+        "sort_key": ENGINEERING_SORT_KEY,
+        "unique": True,
+        "description": "Gated engineering-lens rows over episodes@1 (RFC 0007)",
     },
 }
