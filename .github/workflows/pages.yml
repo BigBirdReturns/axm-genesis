@@ -1,0 +1,37 @@
+# Publish the GitHub Pages site via GitHub Actions.
+#
+# Settings -> Pages -> Source is "GitHub Actions", so a deploy workflow (this
+# file) is what actually publishes the site — there is no branch-serve fallback.
+# It uploads the repo (index.html is the landing page) and deploys on every push
+# to the default branch, or on demand.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deployment at a time; don't cancel a running publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
