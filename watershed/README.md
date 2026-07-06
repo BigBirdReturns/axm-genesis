@@ -31,7 +31,9 @@ frozen (normative surface immutable — the spec, vocabulary, and signature root
 
 ## Target edges (forecast, not state)
 
-A `depends_on` entry may be written as `{ "repo": "axm-core", "target": true }`: a declared target state, not yet an actual import. The edge must still be legal — an aspiration to violate the invariant fails now — but the manifest stops asserting a present-tense fact that is not true. The checker labels any manifest containing target edges `FORECAST` in its output. Remove the flag when the dependency becomes real. Until a receipt-level check exists that reads each repo's actual imports and lockfiles and fails on divergence from the manifest, declared non-target edges are themselves self-reported; treat the manifest accordingly.
+A `depends_on` entry may be written as `{ "repo": "axm-core", "target": true }`: a declared target state, not yet an actual import. The edge must still be legal — an aspiration to violate the invariant fails now — but the manifest stops asserting a present-tense fact that is not true. The checker labels any manifest containing target edges `FORECAST` in its output. Remove the flag when the dependency becomes real.
+
+`ci/watershed-verify-local.js` is the receipt check: it reads each locally-checked-out repo's actual `package.json` (`dependencies`, not `devDependencies`) and `pyproject.toml` (`[project].dependencies`), normalizes package names down to candidate manifest repo ids, and diffs that set against the manifest's `depends_on` entry for that repo. It fails on three kinds of divergence: `DECLARED-NOT-ACTUAL` (the manifest claims an edge that no package manifest backs — either make it real or mark it `target: true`), `UNDECLARED` (a repo actually depends on another manifest repo that isn't listed), and `STALE-TARGET` (a `target: true` edge that has become real and needs the flag removed). Coverage is local-only: a repo not passed via `--repo <id>=<localPath>` is skipped with a printed note, not scored as a violation, because this check can only see what's checked out. It also only ever reads package manifests, so vendored conformance (e.g. clifford-number vendoring axm-genesis's identity vectors as test fixtures) is correctly invisible to it and never produces a false `UNDECLARED`.
 
 ## Usage
 
@@ -41,6 +43,9 @@ npx ajv-cli validate --spec=draft2020 -s schema/watershed.schema.json -d your.wa
 
 # enforce flow direction (wire into CI on every manifest change)
 node ci/watershed-check.js your.watershed.json
+
+# verify declared edges against actual dependencies, for whatever repos are checked out locally
+node ci/watershed-verify-local.js your.watershed.json --repo axm-core=../axm-core --repo axm-verify=../axm-verify
 ```
 
 Exit 0: all flows downhill. Exit 1: violations listed flat, one per line, including sideways, uphill, self, cycles, archived targets, incubating targets, edges into non-dependable layers, and frozen repos claiming dependencies.
@@ -48,10 +53,12 @@ Exit 0: all flows downhill. Exit 1: violations listed flat, one per line, includ
 ## Files
 
 ```
-schema/watershed.schema.json    Manifest schema (JSON Schema draft 2020)
-ci/watershed-check.js           The enforcement. Node, no dependencies.
-example/axm.watershed.json      Populated instance: the AXM ecosystem, 16 repos, 4 layers.
-test/watershed-check.test.js    Negative tests: every rule has a fixture that violates it.
+schema/watershed.schema.json            Manifest schema (JSON Schema draft 2020)
+ci/watershed-check.js                   The enforcement. Node, no dependencies.
+ci/watershed-verify-local.js            The receipt check: actual deps vs. declared edges, for local checkouts. Node, no dependencies.
+example/axm.watershed.json              Populated instance: the AXM ecosystem, 16 repos, 4 layers.
+test/watershed-check.test.js            Negative tests: every rule has a fixture that violates it.
+test/watershed-verify-local.test.js     Fixtures for each violation class, plus clean-pass and skipped-repo cases.
 ```
 
 ## Forking the shape
