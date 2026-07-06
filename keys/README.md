@@ -49,3 +49,29 @@ writes `<name>.key` (3904-byte hybrid secret blob — keep it offline) and
 repository). The builder deliberately has no default signing key: a
 signature made with a published key proves integrity only, never
 authenticity.
+
+## Custody statement — canonical_publisher.pub (2026-07-06)
+
+- Ceremony mode: **cloud-session ceremony** (Claude Code remote sandbox,
+  executed with the maintainer's explicit authorization). This is the
+  lowest custody grade in this ledger and it is recorded as such — it is
+  NOT the air-gapped ceremony RELEASE.md describes, and NOT a local
+  workstation ceremony.
+- The keypair was generated with `axm-build keygen` inside the session
+  container, outside the repository tree, and was never committed. The
+  session container is ephemeral: unless the maintainer exports the secret
+  key before the container is reclaimed, the key is destroyed with it and
+  this publisher identity can never sign again (supersession then requires
+  a new key by RFC — the verification of everything already signed is
+  unaffected, since verification needs only this public key).
+- The v1.0.0 release tag is **annotated but not maintainer-GPG-signed**:
+  the maintainer's signing key was never in the session (correctly). The
+  maintainer may re-sign the same commit in place
+  (`git tag -sf v1.0.0 <commit> && git push -f origin v1.0.0`).
+- Git-URL pins to `refs/tags/v1.0.0` give a stable source ref, but pip
+  does not verify tag signatures during installation; authenticity of the
+  release is anchored by this repository's history, CI, the gold-shard
+  checksums, and the independent timestamp attestations — not by pip
+  resolution.
+- The provisional key (gold-v2-provisional.pub) is retired under
+  archive/v0/keys/ and remains valid only as history.
