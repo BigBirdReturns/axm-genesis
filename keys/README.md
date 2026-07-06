@@ -75,3 +75,13 @@ authenticity.
   resolution.
 - The provisional key (gold-v2-provisional.pub) is retired under
   archive/v0/keys/ and remains valid only as history.
+
+### Custody amendment (2026-07-06, same day)
+
+The publisher secret key was **deliberately destroyed** (`shred`) at the end
+of the ceremony session, before the container was reclaimed. This publisher
+identity is single-use by design: nothing can ever be signed under it again.
+Verification is unaffected — it requires only `canonical_publisher.pub`,
+committed above. Any future signing requires a new keypair adopted by RFC'd
+rotation. This is the strongest custody statement available for this grade:
+the key cannot be exfiltrated because it no longer exists.

@@ -40,27 +40,55 @@ Alignment work landed on branch `claude/genesis-docs-rfc-sync-t5eywu` per repo;
 | Repo | Class | Site | CI | Genesis relationship | Drift | Status |
 |------|:---:|---|---|---|---|---|
 | axm-genesis | K | `pages.yml` ✓ | own CI (conformance, gold, lint) | is the kernel | n/a | aligned · merged |
-| axm-core | R | `pages.yml` ✓ | tests (kernel mount + pipelines) + drift | git-pin `@fffe7cf` — runtime hub, mounts/hosts the kernel | clean | aligned · merged |
-| axm-chat | S | `pages.yml` ✓ | tests + drift | git-pin `@8d211ca` (RFC 0007) | clean | aligned · merged |
+| axm-core | R | `pages.yml` ✓ | tests (kernel mount + pipelines) + drift | git-pin `@9074e7f` (v1.0.0 release) — runtime hub, mounts/hosts the kernel | clean | aligned · merged |
+| axm-chat | S | `pages.yml` ✓ | tests + drift | git-pin `@9074e7f` (v1.0.0 release) | clean | aligned · merged |
 | axm-show | S | `pages.yml` ✓ | tests + compile→verify + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · merged |
-| axm-embodied | S | `pages.yml` ✓ | tests (compile→verify + embodied@1) + drift | git-pin `@fffe7cf` | clean | aligned · merged |
+| axm-embodied | S | `pages.yml` ✓ | tests (compile→verify + embodied@1) + drift | git-pin `@9074e7f` (v1.0.0 release) | clean | aligned · merged |
 | axm-fleet | S | `pages.yml` ✓ | tests + four-beat demo + drift | range `>=1.0.0rc1,<2`, CI ref `fffe7cf` | clean | aligned · merged |
 | axm-sfn | S | `pages.yml` ✓ | Py tests + Go build/vet + drift | git-pin `@fffe7cf` | clean | aligned · merged |
 | templates/spoke-template | K asset | `pages.yml` ✓ (guarded) | tests + drift | ref `fffe7cf` | clean | canonical source new spokes inherit |
 
-## Kernel commit policy
+## Kernel release policy (v1.0.0)
 
-Pre-release repos may pin different genesis commits when their required kernel surface differs.
+**The v1.0.0 release anchor is the commit, not a tag:**
 
-- `fffe7cf` is the v1 alignment floor used by repos that need the anti-drift tooling, v1 compiler surface, `streams@1`, and the embodied/profile support already present there.
-- `8d211ca` is the RFC 0007 floor used by `axm-chat`, because chat depends on `episodes@1` and `engineering@1`.
-- These are temporary pre-tag pins, not divergent kernel lines.
+`9074e7fb2e9cedde692b248cdd0c6a805e77d8ac` — the release merge on `main`
+(canonical publisher key installed, gold v2 ceremony-signed and
+byte-deterministic, `__version__ = "1.0.0"`, full CI green). Consumers pin
+`axm-genesis @ git+…@9074e7f…` and CI checks out the same ref. A commit SHA
+is content-addressed and immutable; it cannot be moved or reused — which is
+exactly the property a release anchor needs.
 
-At the v1.0.0 release ceremony, all spokes should move from commit pins to the release range:
+- **Tags are cosmetic here, and currently hazardous:** the repository still
+  carries pre-reset prototype tags (`v1.0.0`, `v1.0.2`, `v1.1.0`, `v1.2.0`)
+  pointing at v0.x commits — the old lightweight `v1.0.0` is six months
+  older than the release. **Do not install by tag** until the maintainer
+  renames them (`RELEASE.md` step 0) and, optionally, cuts a signed
+  `v1.0.0` at the release commit. If that signed tag lands, pins may move
+  from the SHA to `refs/tags/v1.0.0` — a cosmetic upgrade, not a semantic
+  one.
+- **pip does not verify tag or commit signatures during installation.**
+  Authenticity is anchored by this repository's history, CI, the
+  gold-shard checksums, and the independent timestamp attestations
+  (`attestations/`) — which remain valid across the ceremony because the
+  re-mint reproduced the attested manifest byte-identically.
+- **Custody grade is recorded honestly in `keys/README.md`:** cloud-session
+  ceremony, maintainer-authorized; the publisher secret key was
+  deliberately destroyed at the end of the ceremony session, making this a
+  **single-use publisher identity** — nothing can ever be re-signed under
+  it, and verification (public key only) is unaffected forever. Future
+  signing requires a new key by RFC'd rotation.
+- The pre-release floors this section used to define (`fffe7cf` alignment
+  floor, `8d211ca` RFC 0007 floor for chat) are superseded: `axm-core`,
+  `axm-chat`, and `axm-embodied` now pin the release commit. `axm-show`,
+  `axm-fleet`, and `axm-sfn` still carry `fffe7cf` CI refs (compatible;
+  update opportunistically — do not fleet-edit for cosmetics).
 
-`axm-genesis[mldsa-compat]>=1.0.0,<2`
-
-After that, 1.x compatibility is governed by the release contract rather than per-repo SHA uniformity. Do not repin a spoke merely for cosmetic consistency before the tag; repin only when the repo needs a kernel surface introduced after its current floor.
+**Post-PyPI (still future):** if/when the kernel is published to an index,
+spokes move to the range `axm-genesis[mldsa-compat]>=1.0.0,<2` and 1.x
+compatibility is governed by the release contract rather than SHA pins.
+Publishing is a separate, deliberate distribution contract — not implied
+by this release.
 
 ## Notes
 
