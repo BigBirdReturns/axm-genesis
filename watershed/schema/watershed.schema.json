@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BigBirdReturns/watershed/schema/watershed.schema.json",
+  "title": "Watershed Manifest",
+  "description": "A registry of repositories assigned to layers, with dependency direction enforced mechanically. Dependencies flow downhill only: a repo may depend on repos in strictly lower layers. Sideways and uphill dependencies are illegal. The manifest is the durable surface; the ecosystem it describes is the instance.",
+  "type": "object",
+  "required": ["watershed", "layers", "repos"],
+  "properties": {
+    "watershed": {
+      "type": "object",
+      "required": ["name", "version", "basin"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "basin": {
+          "type": "string",
+          "description": "The repo every path drains toward. The frozen kernel. Must appear in repos at the lowest layer."
+        },
+        "maintainer": { "type": "string" }
+      }
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["index", "name", "rule"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "description": "0 is the basin layer. Higher numbers are downstream consumers." },
+          "name": { "type": "string" },
+          "rule": { "type": "string", "description": "One sentence stating what this layer may and may not do. Human-readable statement of the invariant the CI check enforces." },
+          "dependable": { "type": "boolean", "default": true, "description": "When false, no repo anywhere may declare a dependency on a repo in this layer. For layers that interact with the ecosystem only through ledgers at runtime (observers, orchestrators): position in the ordering grants no code-dependency rights in either direction. Layer 0 must be dependable." }
+        }
+      },
+      "description": "Layer indices must be unique and contiguous from 0."
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "layer", "defined_in", "spec"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+@[0-9]+$",
+            "description": "Versioned vocabulary identifier, e.g. temporal@1, evidence-tiers@1. Version bumps are new ids; extensions are immutable once published."
+          },
+          "layer": { "type": "integer", "minimum": 0, "description": "Extensions must be defined at layer 0. Any other value fails validation. The field exists so the failure is explicit rather than implicit." },
+          "defined_in": { "type": "string", "description": "Repo id where the canonical spec lives." },
+          "spec": { "type": "string", "description": "Path or URL to the spec document." }
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "url", "layer", "depends_on", "consumes_extensions", "status"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "url": { "type": "string" },
+          "layer": { "type": "integer", "minimum": 0 },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["repo", "target"],
+                  "properties": {
+                    "repo": { "type": "string" },
+                    "target": { "type": "boolean", "const": true, "description": "Declared target state, not yet actual. The edge must still be legal (downhill, dependable, non-archived); the flag only stops the manifest from asserting a present-tense fact that is not true. Remove the flag when the dependency becomes real." }
+                  }
+                }
+              ]
+            },
+            "description": "Repo ids this repo imports, links, or reads at build or runtime. Every listed id must exist in repos and sit at a strictly lower dependable layer. Empty array is a claim, not an omission. An entry may be an object with target: true to declare an aspirational edge; a manifest containing any target edge describes a forecast, not a state, and the checker says so."
+          },
+          "consumes_extensions": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z0-9-]+@[0-9]+$" },
+            "description": "Every listed extension id must exist in extensions. Consuming vocabulary is the only legal sideways-looking relationship, and it resolves downhill because extensions live at layer 0."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["frozen", "active", "incubating", "legacy", "archived"],
+            "description": "frozen: normative surface immutable - the spec, vocabulary, and signature roots, anything a downstream verifier's result depends on; no dependencies; conformance fixtures, CI config, and tooling changes are permitted, because they are the frozen thing's immune system, not the frozen thing. active: normal development. incubating: layer assignment provisional, excluded from downstream depends_on. legacy: may be depended on, may not add dependencies. archived: nothing may depend on it."
+          },
+          "release": { "type": "string", "description": "Current tagged release or commit hash." },
+          "produces": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What the repo emits: ledgers, graphs, reports, signatures. For publication-layer entries, the citation targets."
+          }
+        }
+      }
+    }
+  }
+}
