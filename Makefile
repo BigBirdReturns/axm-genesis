@@ -11,10 +11,14 @@ test:
 test-reversed:
 	python -m pytest -q -p no:cacheprovider $$(ls tests/test_*.py | sort -r)
 
-# Gold shard v2 (axm-hybrid1), signed by the provisional gold key minted
-# on 2026-07-02 (see keys/README.md). The v0.x gold shard lives in archive/.
+# Gold shard v2 (axm-hybrid1). Trusted-key resolution: the ceremony key once
+# RELEASE.md step 1 has installed it, the provisional gold key (minted
+# 2026-07-02, see keys/README.md) before then. Mirrors tests/helpers.py
+# GOLD_PUB. The v0.x gold shard lives in archive/.
+GOLD_KEY := $(shell test -f keys/canonical_publisher.pub && echo keys/canonical_publisher.pub || echo keys/gold-v2-provisional.pub)
+
 verify-gold:
-	axm-verify shard shards/gold/fm21-11-hemorrhage-v2 --trusted-key keys/gold-v2-provisional.pub
+	axm-verify shard shards/gold/fm21-11-hemorrhage-v2 --trusted-key $(GOLD_KEY)
 
 # Frozen-bytes guard: the gold shard is never regenerated. This checks the
 # committed bytes against the pinned checksums (same command CI runs in the

@@ -153,7 +153,12 @@ def test_doc_pins_the_frozen_cli_contract() -> None:
 # ── Version single-sourcing ──────────────────────────────────────────────────
 
 def test_version_is_single_sourced() -> None:
-    assert axm_verify.__version__ == "1.0.0rc1"
+    # No hardcoded version literal here: a duplicate literal is exactly the
+    # second source this test exists to forbid (and it broke RELEASE.md
+    # step 5, whose own gate is this test run after the rc1 -> 1.0.0 flip).
+    # The shape is pinned instead; the value's single source is
+    # axm_verify.__version__.
+    assert axm_verify.__version__.startswith("1.0.0")
 
     pyproject = tomllib.loads(PYPROJECT_TOML.read_text(encoding="utf-8"))
     project = pyproject["project"]

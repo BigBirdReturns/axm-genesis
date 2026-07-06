@@ -10,6 +10,15 @@ shard all pass before this runbook begins.
 Every command is copy-pasteable from the repository root. Steps are in
 execution order.
 
+> **One-click execution:** `tools/ceremony.sh` runs steps 0–6 end to end on
+> the maintainer's machine (one confirmation before anything is pushed), and
+> `tools/ceremony.sh --simulate` dry-runs the whole ceremony with throwaway
+> keys, pushing nothing. The script performs **workstation-grade** custody and
+> writes an honest custody statement saying so — it never claims the air-gap
+> grade below. Use the manual steps for air-gapped custody; use the script
+> when a workstation-grade anchor now beats a perfect anchor never (a later
+> RFC'd key rotation can upgrade the grade).
+
 ---
 
 ## 0. Rename the stale prototype tags
@@ -68,8 +77,11 @@ cp /media/ceremony/canonical_publisher.pub keys/canonical_publisher.pub
 git mv keys/gold-v2-provisional.pub archive/v0/keys/gold-v2-provisional.pub  # retire
 ```
 
-(`make verify-gold` and the CI gold-shard job already expect the ceremony
-key at `keys/canonical_publisher.pub`.)
+(`make verify-gold`, the pytest suite (`tests/helpers.py` `GOLD_PUB`), and
+therefore the CI gold-shard job all resolve the trusted key to
+`keys/canonical_publisher.pub` **when it exists**, falling back to the
+provisional key on pre-ceremony checkouts — so the gates below stay green
+through the key swap.)
 
 ## 2. Re-mint gold v2 with the ceremony key; regenerate CHECKSUMS
 
@@ -80,9 +92,23 @@ built from the same wrapped FM 21-11 source (see
 including `manifest.json` — must reproduce the provisional mint exactly;
 only the key material and signature change.
 
+The wrapped source is the committed section text under its original
+heading — regenerate it from the repo rather than tracking a separate file
+(the builder extracts the section under the `# STOP THE BLEEDING` heading
+and normalizes it; the committed `content/source.txt` is that normalized
+output, and normalization is idempotent):
+
+```bash
+python3 - <<'PY'
+src = open("shards/gold/fm21-11-hemorrhage-v2/content/source.txt", encoding="utf-8").read()
+open("/secure/axm-ceremony/fm21-11-wrapped.md", "w", encoding="utf-8").write("# STOP THE BLEEDING\n\n" + src)
+PY
+```
+
 ```bash
 # OFFLINE — never run a build against shards/gold/ in the repo; build aside and compare:
-export AXM_SIGNING_KEY_HEX=$(xxd -p -c 10000 /secure/axm-ceremony/canonical_publisher.key)
+# (python3 hex, not xxd — xxd is not everywhere)
+export AXM_SIGNING_KEY_HEX=$(python3 -c "print(open('/secure/axm-ceremony/canonical_publisher.key','rb').read().hex())")
 axm-build gold-fm21-11 /secure/axm-ceremony/fm21-11-wrapped.md /secure/axm-ceremony/gold-v2
 unset AXM_SIGNING_KEY_HEX
 

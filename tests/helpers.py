@@ -22,7 +22,14 @@ CI_KEY_PATH = TESTS_DIR / "keys" / "ci_test_publisher.key"
 CI_PUB_PATH = TESTS_DIR / "keys" / "ci_test_publisher.pub"
 
 GOLD_SHARD = REPO_ROOT / "shards" / "gold" / "fm21-11-hemorrhage-v2"
-GOLD_PUB = REPO_ROOT / "keys" / "gold-v2-provisional.pub"
+# Trusted key for the gold shard. The release ceremony (RELEASE.md step 1)
+# installs keys/canonical_publisher.pub and retires the provisional key, so
+# the suite resolves the ceremony key when present and falls back to the
+# provisional key on pre-ceremony checkouts. Without this resolution,
+# RELEASE.md's own gate (`make test` after the gold re-mint) fails.
+_CANONICAL_PUB = REPO_ROOT / "keys" / "canonical_publisher.pub"
+_PROVISIONAL_PUB = REPO_ROOT / "keys" / "gold-v2-provisional.pub"
+GOLD_PUB = _CANONICAL_PUB if _CANONICAL_PUB.exists() else _PROVISIONAL_PUB
 GOLD_CHECKSUMS = REPO_ROOT / "shards" / "gold" / "CHECKSUMS.sha256"
 
 COMPATIBILITY_MD = REPO_ROOT / "COMPATIBILITY.md"
