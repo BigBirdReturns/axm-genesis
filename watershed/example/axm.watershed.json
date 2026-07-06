@@ -1,0 +1,290 @@
+{
+  "watershed": {
+    "name": "axm",
+    "version": "0.1.0",
+    "basin": "axm-genesis",
+    "maintainer": "BigBirdReturns"
+  },
+  "layers": [
+    {
+      "index": 0,
+      "name": "protocol",
+      "rule": "Defines vocabulary and verification. Depends on nothing above it. Extensions live here and only here."
+    },
+    {
+      "index": 1,
+      "name": "attention",
+      "rule": "Orchestrates and observes through ledgers at runtime. Consumes protocol; no code dependency may point into this layer from anywhere.",
+      "dependable": false
+    },
+    {
+      "index": 2,
+      "name": "instruments",
+      "rule": "Produce ledgers from protocol vocabulary. Never depend on each other. Shared needs go down as extensions."
+    },
+    {
+      "index": 3,
+      "name": "publications",
+      "rule": "Cite instrument outputs by hash and version. Depend on everything, depended on by nothing."
+    }
+  ],
+  "extensions": [
+    {
+      "id": "temporal@1",
+      "layer": 0,
+      "defined_in": "axm-core",
+      "spec": "spec/extensions/temporal-1.md"
+    },
+    {
+      "id": "evidence-tiers@1",
+      "layer": 0,
+      "defined_in": "axm-core",
+      "spec": "spec/extensions/evidence-tiers-1.md"
+    },
+    {
+      "id": "embodied@1",
+      "layer": 0,
+      "defined_in": "axm-genesis",
+      "spec": "spec/profiles/embodied@1.md"
+    }
+  ],
+  "repos": [
+    {
+      "id": "axm-genesis",
+      "url": "https://github.com/BigBirdReturns/axm-genesis",
+      "layer": 0,
+      "depends_on": [],
+      "consumes_extensions": [],
+      "status": "frozen",
+      "release": "VERIFY: current tag",
+      "produces": [
+        "genesis kernel",
+        "ML-DSA-44 signature roots"
+      ]
+    },
+    {
+      "id": "axm-core",
+      "url": "https://github.com/BigBirdReturns/axm-core",
+      "layer": 0,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "release": "VERIFY",
+      "produces": [
+        "shard format",
+        "extension specs",
+        "BLAKE3 addressing"
+      ]
+    },
+    {
+      "id": "axm-verify",
+      "url": "https://github.com/BigBirdReturns/axm-verify",
+      "layer": 0,
+      "depends_on": [
+        "axm-genesis",
+        "axm-core"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "release": "VERIFY",
+      "produces": [
+        "verification reports"
+      ]
+    },
+    {
+      "id": "ghostbox",
+      "url": "VERIFY",
+      "layer": 1,
+      "depends_on": [
+        "axm-core",
+        "axm-verify"
+      ],
+      "consumes_extensions": [
+        "temporal@1"
+      ],
+      "status": "active",
+      "release": "VERIFY",
+      "produces": [
+        "level-2 attention records"
+      ]
+    },
+    {
+      "id": "screenghost",
+      "url": "VERIFY",
+      "layer": 1,
+      "depends_on": [
+        "axm-core"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "release": "VERIFY",
+      "produces": [
+        "commerce automation ledgers"
+      ]
+    },
+    {
+      "id": "clifford-number",
+      "url": "https://github.com/BigBirdReturns/clifford-number",
+      "layer": 2,
+      "depends_on": [
+        {
+          "repo": "axm-core",
+          "target": true
+        }
+      ],
+      "consumes_extensions": [
+        "temporal@1"
+      ],
+      "status": "active",
+      "release": "VERIFY",
+      "produces": [
+        "hop-graph.json",
+        "scores.json",
+        "scout-report.md"
+      ]
+    },
+    {
+      "id": "offramp",
+      "url": "https://github.com/BigBirdReturns/offramp",
+      "layer": 2,
+      "depends_on": [
+        "axm-core"
+      ],
+      "consumes_extensions": [
+        "evidence-tiers@1"
+      ],
+      "status": "incubating",
+      "release": "unreleased",
+      "produces": [
+        "office cards",
+        "monthly inventories",
+        "questionnaire scores"
+      ]
+    },
+    {
+      "id": "pta-tracker",
+      "url": "https://bigbirdreturns.github.io/axm-tools/pta-tracker",
+      "layer": 2,
+      "depends_on": [],
+      "consumes_extensions": [],
+      "status": "active",
+      "release": "VERIFY",
+      "produces": [
+        "civic decision calendars"
+      ]
+    },
+    {
+      "id": "field-autopsy",
+      "url": "https://axm.tools",
+      "layer": 3,
+      "depends_on": [
+        "clifford-number",
+        "axm-verify"
+      ],
+      "consumes_extensions": [
+        "evidence-tiers@1",
+        "temporal@1"
+      ],
+      "status": "active",
+      "release": "FA-05",
+      "produces": [
+        "FA series reports"
+      ]
+    },
+    {
+      "id": "fakesoap",
+      "url": "https://fakesoap.com",
+      "layer": 3,
+      "depends_on": [],
+      "consumes_extensions": [],
+      "status": "active",
+      "release": "rolling",
+      "produces": [
+        "mouthpiece essays, exempt from FA admissibility"
+      ]
+    },
+    {
+      "id": "aktv",
+      "url": "VERIFY",
+      "layer": 3,
+      "depends_on": [
+        "axm-verify"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "release": "v2.4",
+      "produces": [
+        "counter-UAS doctrine paper, signed Parquet shard spec"
+      ]
+    },
+    {
+      "id": "axm-chat",
+      "url": "https://github.com/BigBirdReturns/axm-chat",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Turns conversation exports into verified memory shards"
+      ]
+    },
+    {
+      "id": "axm-show",
+      "url": "https://github.com/BigBirdReturns/axm-show",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Seals drone-show mission authorization (what may fly, under which ceiling)"
+      ]
+    },
+    {
+      "id": "axm-embodied",
+      "url": "https://github.com/BigBirdReturns/axm-embodied",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [
+        "embodied@1"
+      ],
+      "status": "active",
+      "produces": [
+        "Seals embodied run evidence (binary sensor streams)"
+      ]
+    },
+    {
+      "id": "axm-fleet",
+      "url": "https://github.com/BigBirdReturns/axm-fleet",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Seals fleet lifecycle (a supersedes chain of node sustainment records)"
+      ]
+    },
+    {
+      "id": "axm-sfn",
+      "url": "https://github.com/BigBirdReturns/axm-sfn",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Seals hardware custody (TPM-bound session journals)"
+      ]
+    }
+  ]
+}
