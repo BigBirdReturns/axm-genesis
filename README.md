@@ -29,6 +29,14 @@ verifier's exit codes are frozen and exercised by the conformance suite.
 Genesis compiles and signs; everything else reads. That boundary is the
 invariant that makes long-term verification possible.
 
+The canonical, machine-checked map of the full ecosystem — these spokes plus
+the instruments and publications built on them, 16 repos across 4 layers — is
+the watershed manifest at
+[watershed/example/axm.watershed.json](watershed/example/axm.watershed.json),
+enforced by `node watershed/ci/watershed-check.js`. The table above is a
+human explainer of the published spokes, not the registry; when the two
+disagree, the manifest wins.
+
 Building a new spoke? The adoption kit is [docs/ADOPTING.md](docs/ADOPTING.md)
 plus the copy-and-rename starter at [templates/spoke-template/](templates/spoke-template/).
 

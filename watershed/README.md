@@ -50,7 +50,7 @@ Exit 0: all flows downhill. Exit 1: violations listed flat, one per line, includ
 ```
 schema/watershed.schema.json    Manifest schema (JSON Schema draft 2020)
 ci/watershed-check.js           The enforcement. Node, no dependencies.
-example/axm.watershed.json      Populated instance: the AXM ecosystem, 11 repos, 4 layers.
+example/axm.watershed.json      Populated instance: the AXM ecosystem, 16 repos, 4 layers.
 test/watershed-check.test.js    Negative tests: every rule has a fixture that violates it.
 ```
 

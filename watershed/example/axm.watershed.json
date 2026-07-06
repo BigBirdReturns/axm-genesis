@@ -40,6 +40,12 @@
       "layer": 0,
       "defined_in": "axm-core",
       "spec": "spec/extensions/evidence-tiers-1.md"
+    },
+    {
+      "id": "embodied@1",
+      "layer": 0,
+      "defined_in": "axm-genesis",
+      "spec": "spec/profiles/embodied@1.md"
     }
   ],
   "repos": [
@@ -211,6 +217,73 @@
       "release": "v2.4",
       "produces": [
         "counter-UAS doctrine paper, signed Parquet shard spec"
+      ]
+    },
+    {
+      "id": "axm-chat",
+      "url": "https://github.com/BigBirdReturns/axm-chat",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Turns conversation exports into verified memory shards"
+      ]
+    },
+    {
+      "id": "axm-show",
+      "url": "https://github.com/BigBirdReturns/axm-show",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Seals drone-show mission authorization (what may fly, under which ceiling)"
+      ]
+    },
+    {
+      "id": "axm-embodied",
+      "url": "https://github.com/BigBirdReturns/axm-embodied",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [
+        "embodied@1"
+      ],
+      "status": "active",
+      "produces": [
+        "Seals embodied run evidence (binary sensor streams)"
+      ]
+    },
+    {
+      "id": "axm-fleet",
+      "url": "https://github.com/BigBirdReturns/axm-fleet",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Seals fleet lifecycle (a supersedes chain of node sustainment records)"
+      ]
+    },
+    {
+      "id": "axm-sfn",
+      "url": "https://github.com/BigBirdReturns/axm-sfn",
+      "layer": 2,
+      "depends_on": [
+        "axm-genesis"
+      ],
+      "consumes_extensions": [],
+      "status": "active",
+      "produces": [
+        "Seals hardware custody (TPM-bound session journals)"
       ]
     }
   ]
