@@ -182,6 +182,14 @@ behavioral contract of `spec/v1/CONFORMANCE.md` is conformant. If prose
 and vectors are ever found to disagree, the vectors govern while the
 discrepancy is resolved by RFC.
 
+**Downstream consumers**: vectors are also consumed outside this repo.
+`clifford-number` vendors `tests/vectors/identity.json` byte-for-byte as
+its cross-repo identity conformance fixture. Because external consumers
+pin vector files by content, the frozen-once-added rule above is
+load-bearing for them too: changing the bytes of an existing vector —
+even a fix — is a compatibility event, shipped as a new vectors file or
+version, never an in-place edit.
+
 ---
 
 ## What is not frozen
