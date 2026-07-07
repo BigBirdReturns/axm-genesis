@@ -20,6 +20,9 @@ also the BUILD-INSTRUCTIONS anti-goal made operational: every pipeline
 must remain executable by a human with a text editor - agents
 accelerate, they never become load-bearing.
 
+A new driver reads SUCCESSION.md (clifford-number root) before its
+first adjudication.
+
 ## Standing rules for any agent in this repo
 
 - Read BUILD-INSTRUCTIONS.md (clifford-number) or COMPATIBILITY.md +
