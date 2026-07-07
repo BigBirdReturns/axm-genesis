@@ -13,8 +13,14 @@ repo's `main` is the authoritative history.
 | Repo | Role | Load-bearing artifacts |
 |---|---|---|
 | **axm-genesis** | Frozen kernel + family doctrine | `docs/LOCALIZATION.md`, `docs/CARTRIDGE_LIFECYCLE.md`, this file, `ADOPTING.md`, `DURABILITY.md` |
-| **axm-arc** | Simulation engine + management client + the cartridges | `src/engine/schema.ts` (the law), `src/sim/cartridge-conformance.ts` (the harness), `cartridges/*.arc.json` + `tests/cartridges/`, `docs/COMPATIBILITY_ATLAS.md`, `docs/CLONE_PORTING.md`, `docs/TIER_B_ENCOUNTER_SEAM.md`, `docs/RFC_TIER_C_REALTIME.md`, the Workshop (`src/game/components/WorkshopScreen.tsx`), `docs/drills/` (verification scripts) |
-| **axm-world** | Appliance client; vendors arc's engine | `RECONCILIATION.md` (the vendor contract), `src/engine/VENDORED_FROM` (the pin), `src/world/i18n/` (localization reference implementation), boot importer (`src/world/cartridge-bay.ts`) |
+| **axm-arc** | Simulation engine + management/text play client + the cartridges | `src/engine/schema.ts` (the law), `src/sim/cartridge-conformance.ts` (the harness), `cartridges/*.arc.json` + `tests/cartridges/`, `docs/COMPATIBILITY_ATLAS.md`, `docs/CLONE_PORTING.md`, `docs/TIER_B_ENCOUNTER_SEAM.md`, `docs/RFC_TIER_C_REALTIME.md`, the Workshop (`src/game/components/WorkshopScreen.tsx`), `docs/drills/` (verification scripts) |
+| **axm-world** | Embodied/appliance play client; vendors arc's engine | `RECONCILIATION.md` (the vendor contract), `src/engine/VENDORED_FROM` (the pin), `src/world/i18n/` (localization reference implementation), boot importer (`src/world/cartridge-bay.ts`) |
+
+Both arc and world *play* the cartridge (see `CARTRIDGE_LIFECYCLE.md` §6):
+arc plays the full text/management story and runs every encounter start to
+finish; world takes the same cartridge and embodies it as a world you walk.
+arc is not "authoring, and world is playing" — it is two honest surfaces on
+one artifact, with deliberately different save models and visual languages.
 | **axm-tools** | Unrelated product line: static, stdlib-only civic tools | its own `CLAUDE.md` + root `README.md` — different laws, do not import the game family's habits there |
 
 Other spokes (core, chat, show, embodied) exist per arc's README family

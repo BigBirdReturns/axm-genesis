@@ -62,10 +62,15 @@ anywhere in an engine path.
 
 ## 6. Play — one cartridge, two clients
 
-arc is the management client (full UI: assign/roster/drama/reports; single
-global save slot). world is the appliance client (boot-screen file import;
-per-cartridge ledger keyed by digest — a different save model,
-deliberately). Both vendor the *same* engine: world vendors `src/engine`,
+Both clients *play* the cartridge — this is not an author-here, play-there
+split. arc is the management/text client: it plays the full story start to
+finish and runs every encounter, through a management UI (assign / roster /
+drama / reports) over a single global save slot. world is the appliance
+client: it takes the *same* cartridge and embodies it as a world you walk —
+boot-screen file import, per-cartridge ledger keyed by digest (a different
+save model, deliberately). Same content, two honest surfaces: read-and-run
+the whole arc in arc; inhabit it in world. Both vendor the *same* engine:
+world vendors `src/engine`,
 `src/arcs`, `tests/engine`, `tests/fixtures` from arc, pinned in world's
 `src/engine/VENDORED_FROM`, synced only via `scripts/sync-engine.sh`, drift
 enforced by world's `engine-drift` CI. Engine changes land in arc first —
