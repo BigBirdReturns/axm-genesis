@@ -84,6 +84,17 @@ check retired-suite \
   "the only suite is axm-hybrid1; SUITE_ED25519 / SUITE_MLDSA44 / axm-blake3-mldsa44 are pre-reset" \
   'axm-blake3-mldsa44|\bSUITE_ED25519\b|\bSUITE_MLDSA44\b'
 
+# F. Stale cross-repo references. When a package moves between repos, references
+#    to its OLD home go stale — the 2026-07 foundry_exit move (axm-core -> GhostBox)
+#    broke three repos silently because a surface test SKIPPED instead of failing.
+#    Keyed on the env var (a code construct), not the repo name, so prose that
+#    merely mentions the move does not trip it. One line per moved package; the
+#    source of truth is docs/ECOSYSTEM-WIRING.md. This rule names both tokens in
+#    its own definition, so its lines carry drift-ok.
+check stale-crossrepo-foundry-exit \
+  "foundry_exit lives in GhostBox (GHOSTBOX_REPO); pairing it with AXM_CORE_REPO is stale — see docs/ECOSYSTEM-WIRING.md  (drift-ok)" \
+  'AXM_CORE_REPO[^\n]{0,140}foundry_exit|foundry_exit[^\n]{0,140}AXM_CORE_REPO'  # drift-ok
+
 if [ "$status" -eq 0 ]; then
   echo "✓ drift-check: clean — no kernel-boundary violations in ${ROOT}"
 fi
