@@ -113,6 +113,15 @@ fix that, it protects every future cartridge.
 evidence (they are the porting protocol's durable record). Babysit open
 PRs to merged/closed — re-check state, CI, and mergeability on a timer;
 resolve conflicts by merging main in, re-verifying everything, pushing.
+One PR is one reviewable unit: a change that spans an engine seam, a
+schema/persistence layer, and a UI is three PRs, not one — split it into
+a stack (engine/data first, then the layers that consume it) so each
+diff can be judged on its own and the load-bearing seam lands before its
+dependents. An engine or vendored-surface change is always its own PR,
+merged first, because downstream repos sync from it. Squash a surface's
+build-history churn (the intermediate passes) into the final state before
+review — reviewers judge the result, not the archaeology. A diff too
+large to review as one unit is a packaging failure, not a size to excuse.
 
 **The owner's role.** Plays the games and gives feel-notes (mechanics
 tuning has no other ground truth); proofreads model-drafted locales
