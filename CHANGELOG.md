@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added (docs/tools/tests only; nothing frozen changes) — family doctrine lane (train 081–090)
+- `docs/CONTINUITY.md` — the law book both game clients' session docs point
+  at, previously a phantom: the kernel invariant + platform constitution
+  (cited, not legislated), the practiced operating doctrine (RFC-first lanes,
+  driver-model orchestration, per-repo verification bars, the stop/ask box),
+  the games/ops family posture, and the release-train record.
+- `tests/test_continuity.py` — the law-book guard: existence, required
+  sections, load-bearing anchors (whitespace-normalized).
+- `tools/doc-truth-sweep.sh` — mechanical cross-repo doc-pointer verification
+  (12 hard-listed load-bearing pointers + conservative extraction across
+  genesis/arc/world); an unresolvable pointer is a finding, never a skip.
+  First run found 2 phantoms (fixed in arc); now clean.
+- `docs/RFC_FAMILY_DOCTRINE.md` — the lane's RFC, delegated rulings recorded
+  for the owner's audit.
+
 ### Added (compiler-side only; nothing frozen changes)
 - `CompilerConfig.extra_content` — additional content files (e.g. an
   embodied spoke's binary sensor streams) copied verbatim into
