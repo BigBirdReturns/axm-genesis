@@ -43,3 +43,24 @@ rulings recorded for audit). Implementation lands as the release train's PR
    Drills deliberately stay out of CI (arc's own doctrine: receipts, not CI).
 2. **Receipts before report**: 100 is written only after 093–098's sweep, so
    the report states what IS, not what was intended.
+
+## Lane verdict (093–098 compressed; 099 — audited 2026-07-10)
+
+The full-receipt sweep ran on every repo's latest main during the connector
+outage (the drive continued locally, per doctrine):
+
+- **arc**: tsc clean · **559** vitest · build green · all five drills
+  (`guildhall`, `guildhall-playtest`, `library-custody`, `expansion-archive`,
+  `workshop`) with `errs: []` and every assertion true.
+- **world**: `npm run check` **626** · full Playwright suite — desktop 16
+  passed + 2 skipped (pre-existing skip conditions in specs that predate the
+  train), mobile 14 passed.
+- **genesis**: `make test` **302** · doc-truth sweep clean (34 pointers, 0
+  findings). `drift-check` is the ops-line spokes' CI tool and does not apply
+  to the game line — recorded rather than run meaninglessly.
+
+Nothing red → 093–098 compress into this verdict (the standing precedent);
+092 (arc's CI floor) was the lane's one real fix, and the token expiry that
+interrupted its PR — the same failure that stranded the original handoff at
+PR 034 — was ridden out without losing a car: work continued locally and
+merged on re-auth.
