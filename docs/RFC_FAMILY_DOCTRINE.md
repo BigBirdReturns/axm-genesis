@@ -66,3 +66,22 @@ train's PR 081–090, across the three in-session repos (genesis, arc, world).
    prose is reviewer-grade work, and every claim in it must be citable to an
    existing artifact (ADR, RFC, merged PR).
 3. **Numbering kept**: 081–090; the quality/release lane (091–100) follows.
+
+## Lane verdict (PRs 086–087 compressed; 089 — audited 2026-07-10)
+
+The sweep's first run (083) found exactly two phantoms, both in one arc README
+section, both fixed by one PR (085). PRs 086–087 therefore compress into this
+recorded verdict rather than manufactured churn (the 059/069/079 precedent):
+**no further findings existed to fix.** Cohesion: the lane added docs, one
+test, and one tool — all in genesis's own registers (ADOPTING/ERRATA prose
+style, pytest conventions, drift-check's script register); nothing frozen
+touched; PR #23 untouched and still the owner's.
+
+## Capstone receipt (090 — run 2026-07-10)
+
+- `tools/doc-truth-sweep.sh` across all three checkouts: **clean — 34
+  cross-repo pointers verified, 0 findings** (exit 0).
+- `make test`: **302 passed** (299 baseline + the 3 law-book guards).
+- CONTINUITY.md exists, guarded, and every load-bearing pointer it names
+  resolves. The lane's one rule — *a doc other repos point to must exist,
+  and a posture is stated in exactly one place* — holds mechanically.
