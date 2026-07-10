@@ -107,7 +107,9 @@ One-PR-per-item, RFC-first, driver-gated. As shipped:
 | Workshop conformance | 061–070 | arc | `docs/RFC_WORKSHOP.md` |
 | Cartridge Library custody | 071–080 | arc | `docs/RFC_CARTRIDGE_LIBRARY.md` |
 | Family doctrine & doc-truth | 081–090 | genesis + clients | `docs/RFC_FAMILY_DOCTRINE.md` |
-| Quality / governance / release | 091–100 | all | (opens after 090) |
+| Quality / governance / release | 091–100 | all | `docs/RFC_TRAIN_RELEASE.md` |
+
+The full report: `docs/TRAIN-2026-07.md` (train PR 100).
 
 ## Amendment
 
