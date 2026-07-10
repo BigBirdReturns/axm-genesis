@@ -45,6 +45,8 @@ def test_continuity_carries_required_sections() -> None:
 
 
 def test_continuity_carries_load_bearing_anchors() -> None:
-    text = CONTINUITY.read_text(encoding="utf-8")
+    # Whitespace-normalized: prose is free to re-wrap lines without breaking
+    # the guard — only the words are load-bearing.
+    text = " ".join(CONTINUITY.read_text(encoding="utf-8").split())
     missing = [a for a in REQUIRED_ANCHORS if a not in text]
     assert not missing, f"CONTINUITY.md lost load-bearing anchor(s): {missing}"
