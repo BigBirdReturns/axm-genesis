@@ -1,15 +1,19 @@
 # RFC 0008: Sealed Runs — Deterministic Replay Across the Watershed
 
-> **Status: PROPOSED — owner ratification required.** Drafted 2026-07-14
-> (UTC). This RFC authorizes one deliberately narrow join between the games
-> and ops lines. It does not amend the Genesis v1 kernel, the games platform
-> constitution, or either line's product mission.
+> **Status: ACCEPTED** — ratified 2026-07-14 (UTC) under the owner's explicit
+> instruction to fan out and execute the lane. The delegated D1–D8 rulings are
+> recorded below for the owner's audit and remain explicitly overrulable. This
+> RFC authorizes one deliberately narrow join between the games and ops lines.
+> It does not amend the Genesis v1 kernel, the games platform constitution, or
+> either line's product mission.
 
 ## Summary
 
-Define the **sealed run**: an ordinary AXM Genesis v1 shard containing one
-complete, canonical replay package for an AXM cartridge run. The shard declares
-the additive `replay-run@1` profile and carries one `replays@1` extension row.
+Define the **sealed run record**: an ordinary AXM Genesis v1 shard containing
+one complete, canonical replay package for either a bounded run prefix or a
+terminal AXM cartridge run. The shard declares the additive `replay-run@1`
+profile and carries one `replays@1` extension row whose signed `run_status`
+distinguishes an in-progress checkpoint from a completed or abandoned run.
 The kernel continues to do exactly what it does now — compile, sign, and verify
 the custody envelope. A profile-aware games-line verifier additionally checks
 that the package contains the validated cartridge, founding state, every
@@ -21,8 +25,9 @@ The one rule is:
 
 > A run may be called **replay-verified** only when its shard passes Genesis
 > verification, `replay-run@1` appears in `profiles_checked`, and deterministic
-> re-execution matches every recorded checkpoint. A signature alone never makes
-> that claim.
+> re-execution matches every recorded checkpoint. An in-progress artifact proves
+> a complete prefix only; only a matching terminal action and status prove a
+> completed or abandoned run. A signature alone never makes either claim.
 
 This is the convergence artifact between the two existing AXM product lines:
 the games line contributes executable authored law and deterministic replay;
@@ -115,10 +120,32 @@ profile, extension, or replay files after Genesis has signed the manifest.
 
 ### 3. Canonical replay package
 
-The games line MUST publish a versioned replay-package specification and
+The games line MUST originate a versioned replay-package specification and
 conformance corpus named `axm-engine@1` before an implementation may claim this
-RFC is implemented. The corpus, not a repository commit hash, defines compatible
-execution behavior.
+RFC is implemented. When `replay-run@1` is registered, every normative engine
+rule it depends on MUST be restated in the Genesis profile document and the
+complete conformance corpus MUST be frozen in Genesis beside the profile. Arc's
+copy remains the authoring source; Genesis's self-contained profile and vectors
+are the stranded-verifier contract. A floating external repository, branch,
+label, or URL is never normative. The corpus, not a current implementation or
+repository tip, defines compatible execution behavior.
+
+The contract MUST NOT freeze until an explicit state inventory accounts for all
+durable state in both clients. `Organization` plus one current client ledger is
+known to be incomplete: pending reward/assignment choices, Arc campaign and
+raid-night state, World consequence memory, and any other resumable mutation
+must either enter the shared canonical run state or be proved presentation-only.
+Unknown or unmapped durable state blocks the freeze; it is never silently
+dropped into client annotations.
+
+The inventory MUST also close the current authored-identity hole: every authored
+field capable of changing durable state must be covered by the `cart1_` identity.
+World's current opening options/effects live outside the Arc bytes that
+`cartridgeDigest` hashes, so they MUST move into Arc law before the contract
+freezes (or a later owner-ratified RFC must replace `cart1_` with a new identity
+over the full executable program). Merely copying unbound opening effects into
+`founding.json` is insufficient. Authored people and art may remain outside the
+digest only when they are presentation-only.
 
 For `replay-run@1`:
 
@@ -198,17 +225,25 @@ state-changing path, including at minimum:
 - downtime, recruitment, progression, and other between-resolution mutations;
 - explicit run completion, abandonment, and failed/partial resolution paths.
 
+An in-progress checkpoint MUST NOT contain a terminal completion or abandonment
+action. A completed or abandoned run MUST end with the corresponding terminal
+action; no later frame is permitted. Failure of an encounter is not necessarily
+terminal and does not by itself satisfy this rule.
+
 If a client can change durable engine or ledger state through an action not in
 the versioned vocabulary, it is not yet conformant and MUST NOT export a shard
 claiming `replay-run@1`.
 
 ### 5. Non-selective recording
 
-The profile's honesty property is **complete state-transition recording**:
+The profile's honesty property is **complete state-transition recording within
+the artifact's declared scope**:
 
 - success, partial, failure, rejected actions that consume or change state, and
   recovery actions are recorded under the same rules;
-- a runtime may not begin or end the journal around a desirable interval;
+- the journal begins at the founding transition; an `in_progress` artifact may
+  end only at its declared checkpoint, while a `completed` or `abandoned`
+  artifact may end only at the matching terminal action;
 - `seq` is gap-free and no frame may be deleted, reordered, or duplicated;
 - the final serialized engine state and ledger MUST be derivable by replaying
   the complete journal from the founding state;
@@ -219,6 +254,13 @@ The profile's honesty property is **complete state-transition recording**:
 This is the games-line counterpart of `embodied@1` non-selective recording. It
 does not reuse that profile's binary format or error code.
 
+An `in_progress` artifact proves only that the complete prefix through its
+checkpoint was replayed. It does not prove what happened afterward and MUST NOT
+be described as a completed run. A later checkpoint extends the evidence by
+publishing a new immutable shard with the complete longer prefix. Only a
+terminal status, matching terminal action, and matching final state close the
+run.
+
 ### 6. Extension `replays@1`
 
 Register one canonical-JSONL extension. Version 1 permits exactly one row per
@@ -228,6 +270,7 @@ sealed run shard:
 |---|---|---|
 | `cartridge_digest` | string | `cart1_` plus 64 lowercase SHA-256 hex characters, recomputed from `content/cartridge.arc.json`. |
 | `engine_contract` | string | Exactly `axm-engine@1`. |
+| `run_status` | string | Exactly one of `in_progress`, `completed`, or `abandoned`. |
 | `founding_input_path` | string | Exactly `content/founding.json`. |
 | `founding_input_sha256` | string | Lowercase SHA-256 hex of the founding-input bytes. |
 | `founding_state_path` | string | Exactly `content/founding-state.json`. |
@@ -269,7 +312,10 @@ checks in order:
 8. Byte-compare each canonical output and after-state hash.
 9. Byte-compare the resulting final state with `final-state.json`.
 10. Cross-check journalled resolutions against the final ledger in both
-   directions.
+    directions.
+11. Cross-check `run_status` against the final canonical state and terminal
+    action: `in_progress` has no terminal action; `completed` and `abandoned`
+    end with exactly their matching terminal action and admit no later frame.
 
 Profile failures use profile-owned error codes:
 
@@ -283,12 +329,17 @@ Profile failures use profile-owned error codes:
 | `E_REPLAY_OUTPUT` | Re-executed output differs from the recorded canonical output. |
 | `E_REPLAY_STATE` | Re-executed state differs from a checkpoint or final-state bytes. |
 | `E_REPLAY_LEDGER` | Resolution journal and final ledger disagree. |
-| `E_REPLAY_ENGINE_UNAVAILABLE` | Verifier cannot execute the named engine contract; it MUST report the profile unchecked rather than silently pass it. |
+| `E_REPLAY_STATUS` | Declared run status, final state, and terminal action disagree. |
 
 As required by Genesis profile law, a kernel-only verifier that does not
 implement `replay-run@1` reports it in `profiles_unchecked` and may still return
 kernel PASS. Consumers relying on replay MUST require it in
-`profiles_checked`.
+`profiles_checked`. Engine unavailability is this exact unimplemented-profile
+case: the verifier reports `replay-run@1` unchecked and emits no profile error.
+Once a verifier begins the profile check, inability to complete an execution it
+claims to implement is `E_REPLAY_ACTION` or `E_REPLAY_STATE` as applicable and
+the shard fails; a verifier may never report the same profile as both checked
+and unchecked.
 
 ### 8. Claims and trust vocabulary
 
@@ -299,8 +350,10 @@ These labels are intentionally non-interchangeable:
 | **Portable run** | Native game-client import/export roundtrip succeeds. |
 | **Sealed run** | Genesis kernel PASS under an out-of-band trusted publisher key. |
 | **Self-replayed** | The producing implementation re-executes the package successfully. Useful as a build guard, not independent verification. |
-| **Replay-verified** | Kernel PASS and `replay-run@1` present in `profiles_checked`. |
-| **Independently replay-verified** | Replay-verified by a second implementation built from the engine contract and vectors without importing the producing engine. |
+| **Replay-verified checkpoint** | Kernel PASS, `replay-run@1` present in `profiles_checked`, and signed status `in_progress`. Proves the complete prefix through this checkpoint only. |
+| **Replay-verified completed run** | Kernel PASS, profile checked, signed status `completed`, and matching terminal action and final state. |
+| **Replay-verified abandoned run** | Kernel PASS, profile checked, signed status `abandoned`, and matching terminal action and final state. |
+| **Independently replay-verified** | Any applicable replay-verified claim above established by a second implementation built from the engine contract and vectors without importing the producing engine. |
 | **Time-attested** | A valid external timestamp proof or attestation shard covers the sealed run. |
 
 None of these means empirically true, institutionally certified, fair, safe,
@@ -310,7 +363,9 @@ the player, creator, owner, or witness unless separate evidence establishes that
 role.
 
 Game-facing UI MUST NOT show “verified replay” for a self-replay alone. Until a
-second implementation exists, the honest label is “self-replayed.”
+second implementation exists, the honest label is “self-replayed.” UI that does
+show a replay-verified claim MUST visibly distinguish an in-progress checkpoint
+from a completed or abandoned run.
 
 ### 9. Signing and custody
 
@@ -331,16 +386,19 @@ reference is additive and never substitutes for embedding the exact Arc bytes.
 The implementation lane MUST ship, before any production “replay-verified”
 claim:
 
-1. one frozen valid sealed-run vector with at least one successful, one partial,
-   and one failed resolution in its journal;
+1. frozen valid vectors covering an in-progress checkpoint and both terminal
+   statuses, with successful, partial, and failed resolution paths represented;
 2. invalid vectors for each profile error code;
 3. the tamper trio: changed cartridge byte, changed input frame, changed final
    state byte;
 4. a truncation/gap vector proving non-selective recording;
-5. a cross-client vector produced in one games client and replayed in the other;
-6. a second verifier implemented from `axm-engine@1` plus vectors without
+5. status-confusion vectors: terminal action marked `in_progress`, non-terminal
+   prefix marked `completed` or `abandoned`, mismatched terminal action, and a
+   frame appended after termination;
+6. a cross-client vector produced in one games client and replayed in the other;
+7. a second verifier implemented from `axm-engine@1` plus vectors without
    importing the producing engine package;
-7. a gold roundtrip: native export → Genesis one-pass seal → kernel verify →
+8. a gold roundtrip: native export → Genesis one-pass seal → kernel verify →
    replay verify → import/resume from the native package with identical final
    state.
 
@@ -354,7 +412,17 @@ state bytes.
 Acceptance authorizes the lane, not a one-PR cross-repository rewrite. Work
 lands in this order:
 
-1. **Games contract, arc first.** Specify `axm-engine@1`, canonical state bytes,
+0. **Determinism preflight, arc first.** Remove wall-clock values from engine
+   transition outputs; make every state/RNG/output-affecting traversal
+   codepoint-stable; remove misleading ambient RNG inputs; and prove full
+   transition equality across semantically identical states with different
+   object insertion order. Inventory every durable client state surface. Move
+   World's executable opening effects into Arc schema/identity, and move
+   World-only durable mutations such as downtime and direct loot award behind
+   shared pure Arc transitions. This step changes no replay format and freezes
+   nothing.
+1. **Games contract, arc first.** After the inventory is closed, specify
+   `axm-engine@1`, canonical state bytes,
    the shared structured run record, action vocabulary, journal writer, and
    vectors in `axm-arc`. Existing client ledgers become projections or lossless
    migrations of that one record; no parallel source of outcome truth is added.
@@ -364,8 +432,10 @@ lands in this order:
    bytes while old `axm-cartridge-run/v2` artifacts still boot or degrade
    honestly.
 3. **Genesis additive registration.** Add `replays@1`, the
-   `replay-run@1` profile document/hook, vectors, and tests. No v1 kernel field or
-   construction changes.
+   self-contained `replay-run@1` profile document/hook, the normative engine
+   rules it needs, frozen copies of the complete vectors, and tests. No v1
+   kernel field or construction changes; verification requires no network or
+   live access to a games repository.
 4. **One-pass sealing adapter.** Add a small adopter/spoke that accepts the
    native replay package plus explicit key and calls Genesis compilation once.
    Its repository placement is decided during implementation review; it may not
@@ -399,7 +469,8 @@ This RFC does **not**:
 - use wall-clock timestamps as run order; journal order is `seq` plus the hash
   chain;
 - permit selective recording, summary-only replay, unknown action kinds, or
-  “verified” language when the profile is unchecked;
+  “verified” language when the profile is unchecked, or call an in-progress
+  prefix a completed run;
 - redesign campaign balance, game presentation, Library, Workshop, or the
   cartridge format beyond what exact replay requires.
 
@@ -431,18 +502,19 @@ No implementation exists at proposal time. The current evidence for the gap is:
 - `axm-genesis/verifiers/go/` — precedent for a second implementation built
   from specification and vectors.
 
-Implementing PRs will be linked here after acceptance. Status remains
-**PROPOSED** until the owner resolves the decision table below.
+Implementing PRs will be linked here as the accepted lane lands. Status becomes
+**IMPLEMENTED** only after the complete conformance and independent-verification
+sequence in Section 11 is shipped.
 
 ## Owner decision table
 
 | Decision | Recommendation | Honest alternative | Resolution |
 |---|---|---|---|
-| D1 — May a run cross the games/ops watershed? | **Yes, through this one profiled shard boundary.** The native run remains a games artifact; sealing is an additive custody operation. | Keep the lines entirely separate; runs remain portable but not Genesis-sealed. | Pending owner |
-| D2 — Kernel change? | **No.** `replay-run@1` + `replays@1`; kernel stays frozen and opaque. | New Genesis core record type, rejected because execution is domain law. | Pending owner |
-| D3 — Is sealing required to play? | **Never.** Unsigned cartridges and native runs always boot; trust remains a layer, not a gate. | Require sealed artifacts, rejected as a platform-constitution violation. | Pending owner |
-| D4 — What proves replay? | **Complete inputs + deterministic re-execution + byte comparison.** A summary or matching final outcome is insufficient. | Treat ledger/result hashes as replay evidence, rejected because causes are missing. | Pending owner |
-| D5 — What may UI claim before an independent verifier exists? | **Self-replayed**, never replay-verified. | Allow the producer to verify itself, rejected as circular evidence. | Pending owner |
-| D6 — How are later checkpoints represented? | **New immutable shard with complete journal, linked by `lineage@1` action `amend`.** | Mutable/appendable shard or delta-only checkpoint, rejected because it breaks independent recovery. | Pending owner |
-| D7 — Who signs? | **An explicitly selected publisher key; role is not inferred.** | Platform/default key, rejected because it centralizes custody and confuses identity. | Pending owner |
-| D8 — Does this authorize a PoR product lane? | **No.** It supplies the custody/replay substrate only; PoR remains a separate owner decision. | Bundle PoR into this RFC, rejected as an uncabined second product decision. | Pending owner |
+| D1 — May a run cross the games/ops watershed? | **Yes, through this one profiled shard boundary.** The native run remains a games artifact; sealing is an additive custody operation. | Keep the lines entirely separate; runs remain portable but not Genesis-sealed. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
+| D2 — Kernel change? | **No.** `replay-run@1` + `replays@1`; kernel stays frozen and opaque. | New Genesis core record type, rejected because execution is domain law. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
+| D3 — Is sealing required to play? | **Never.** Unsigned cartridges and native runs always boot; trust remains a layer, not a gate. | Require sealed artifacts, rejected as a platform-constitution violation. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
+| D4 — What proves replay? | **Complete inputs + deterministic re-execution + byte comparison.** A summary or matching final outcome is insufficient. | Treat ledger/result hashes as replay evidence, rejected because causes are missing. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
+| D5 — What may UI claim before an independent verifier exists? | **Self-replayed**, never replay-verified. | Allow the producer to verify itself, rejected as circular evidence. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
+| D6 — How are later checkpoints represented? | **New immutable shard with complete journal, linked by `lineage@1` action `amend`.** | Mutable/appendable shard or delta-only checkpoint, rejected because it breaks independent recovery. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
+| D7 — Who signs? | **An explicitly selected publisher key; role is not inferred.** | Platform/default key, rejected because it centralizes custody and confuses identity. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
+| D8 — Does this authorize a PoR product lane? | **No.** It supplies the custody/replay substrate only; PoR remains a separate owner decision. | Bundle PoR into this RFC, rejected as an uncabined second product decision. | **Accepted as recommended — delegated owner ruling, 2026-07-14.** |
