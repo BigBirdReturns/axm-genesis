@@ -1,0 +1,56 @@
+{
+  "schema": "drivesort/project-estate-spec@1",
+  "project": "axm-genesis",
+  "allowed_anchors": [
+    "D:\\Projects",
+    "S:\\Projects",
+    "S:\\Scratch"
+  ],
+  "roots": [
+    {
+      "id": "live",
+      "path": "D:\\Projects\\Organs\\AXM\\axm-genesis\\main",
+      "role": "live",
+      "purpose": "one active source checkout",
+      "active": true
+    },
+    {
+      "id": "durable",
+      "path": "S:\\Projects\\Organs\\AXM\\axm-genesis",
+      "role": "custody",
+      "purpose": "durable project data, caches, receipts, and archives"
+    },
+    {
+      "id": "scratch",
+      "path": "S:\\Scratch\\Organs\\AXM\\axm-genesis",
+      "role": "temp",
+      "purpose": "disposable runs and intermediates",
+      "active": true
+    },
+    {
+      "id": "legacy_d_project",
+      "path": "D:\\Projects\\axm-genesis",
+      "role": "alias",
+      "purpose": "retired pre-taxonomy project root",
+      "expected_target_root": "live",
+      "desired_state": "absent"
+    },
+    {
+      "id": "legacy_s_project",
+      "path": "S:\\Projects\\axm-genesis",
+      "role": "alias",
+      "purpose": "retired durable compatibility root",
+      "expected_target_root": "durable",
+      "desired_state": "absent"
+    },
+    {
+      "id": "legacy_s_scratch",
+      "path": "S:\\Scratch\\axm-genesis",
+      "role": "alias",
+      "purpose": "retired scratch compatibility root",
+      "expected_target_root": "scratch",
+      "desired_state": "absent"
+    }
+  ],
+  "cleanup": []
+}
