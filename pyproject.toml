@@ -49,3 +49,9 @@ version = {attr = "axm_verify.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff.lint]
+# Ruff 0.16 expanded the zero-configuration default from 59 rules to 413.
+# Declare the repository's established pre-0.16 lint surface explicitly so
+# dependency upgrades cannot silently redefine the blocking CI contract.
+select = ["E4", "E7", "E9", "F"]
