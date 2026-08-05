@@ -161,7 +161,8 @@ def test_bundle_normalizes_semantically_unordered_values():
     (lambda b: b["aperture-facts@1"][0].__setitem__("first_reveal_position_id", "position:missing"), "unknown first reveal position"),
     (lambda b: b["aperture-causal-edges@1"][0].__setitem__("effect_fact_id", "fact:entry"), "self-causal"),
     (lambda b: b["aperture-facts@1"][0].__setitem__("provenance_refs_json", _arr("source:missing")), "unknown package sources"),
-    (lambda b: b["aperture-edition-maps@1"][0].__setitem__("canonical_start_us", ""), "contradicts segment kind"),
+    (lambda b: b["aperture-edition-maps@1"][0].__setitem__("canonical_start_us", ""), "incomplete canonical interval"),
+    (lambda b: b["aperture-edition-maps@1"][0].update({"canonical_start_us": "", "canonical_end_us": ""}), "contradicts segment kind"),
     (lambda b: b["aperture-sources@1"][0].__setitem__("contains_redistributable_text", False), "JSON strings only"),
 ])
 def test_bundle_refuses_domain_drift(mutation, match):
