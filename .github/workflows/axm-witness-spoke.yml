@@ -1,0 +1,95 @@
+name: axm-witness-spoke
+
+on:
+  pull_request:
+    paths:
+      - "spokes/axm-witness/**"
+      - ".github/workflows/axm-witness-spoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "spokes/axm-witness/**"
+      - ".github/workflows/axm-witness-spoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axm-witness-spoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: false
+
+      - name: Verify fragment receipt
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path("spokes/axm-witness/bootstrap")
+          receipt = json.loads((root / "TRANSPORT.json").read_text(encoding="utf-8"))
+          for item in receipt["fragments"]:
+              path = root / item["name"]
+              data = path.read_bytes()
+              assert len(data) == item["bytes"], (path, len(data), item["bytes"])
+              assert hashlib.sha256(data).hexdigest() == item["sha256"], path
+          print(f"verified {len(receipt['fragments'])} transport fragments")
+          PY
+
+      - name: Reconstruct source archive
+        run: spokes/axm-witness/bootstrap/extract.sh "$RUNNER_TEMP/axm-witness"
+
+      - name: Install Python package
+        run: |
+          cd "$RUNNER_TEMP/axm-witness/axm-witness"
+          python -m pip install -e '.[dev]'
+
+      - name: Python suite
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          cd "$RUNNER_TEMP/axm-witness/axm-witness"
+          python -W error -m pytest -q
+
+      - name: Go suite
+        run: |
+          cd "$RUNNER_TEMP/axm-witness/axm-witness/verifiers/go"
+          go test ./...
+
+      - name: Python mutation and evidence-boundary campaign
+        run: |
+          cd "$RUNNER_TEMP/axm-witness/axm-witness"
+          python campaigns/verify_campaign.py --out "$RUNNER_TEMP/axm-witness-python-campaign"
+
+      - name: Cross-language replay campaign
+        run: |
+          cd "$RUNNER_TEMP/axm-witness/axm-witness"
+          python campaigns/verify_cross_language.py --out "$RUNNER_TEMP/axm-witness-cross-language"
+
+      - name: Compile Python sources
+        run: |
+          cd "$RUNNER_TEMP/axm-witness/axm-witness"
+          python -m compileall -q src campaigns console tests
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: axm-witness-qualification
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/axm-witness-python-campaign
+            ${{ runner.temp }}/axm-witness-cross-language

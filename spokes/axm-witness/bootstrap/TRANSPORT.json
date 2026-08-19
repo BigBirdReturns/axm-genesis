@@ -1,0 +1,31 @@
+{
+  "format": "axm-witness-bootstrap-transport@1",
+  "created_utc": "2026-08-19T00:00:00Z",
+  "archive": {
+    "name": "axm-witness-bootstrap.tar.gz",
+    "sha256": "f8d60bbf18f14167186ef71e256e0d855817bfeb272b7a25c30230e1c0c77f56",
+    "base64_sha256": "8a3cfa1a05dc0846de8ca6222591c1a01681d0f4e2ee0b3584a825b16e987044",
+    "base64_bytes": 74404
+  },
+  "fragments": [
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part00","bytes":8000,"sha256":"792b56fd82972f2852e58b0e737f627fc38cbcb2821c4aeb887d66c581c28aeb","git_blob_sha":"b612bff94ff5461228987b10e5246ac77e98bbde"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part01","bytes":8000,"sha256":"6606dfd369a553e2c45c8fe6d5cc788fd4bb36553591af0f620ab6cd9293928e","git_blob_sha":"f014766388eefdbe313f2f456ec05418c7952b9d"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part02","bytes":8000,"sha256":"d60df3d9a1a8c88bb53ff7495b81bf9f13b13488ba5c9105e3974e8330e22a00","git_blob_sha":"2026e703b309dc15c8fbd9bccf372dd91aabc820"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part03","bytes":8000,"sha256":"90972fcf396fb31cc0e7df10c6f5e3718c56d008551fce9ec62dbd464db1857e","git_blob_sha":"955761bd5685d0f16caddc8764b71c7fce737888"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part04","bytes":8000,"sha256":"3c052341b4818b6158f97ee7ffaa48a5aea9aa48a7c5f9ab4b950d9957d3dce1","git_blob_sha":"d051eec14ef538d8ec6d338479790198f5e57c2c"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part05","bytes":8000,"sha256":"baee14319dba2009d778f388cc0ec65517374c430e5f8cfdd0f806409260a5c4","git_blob_sha":"66224d98b1e679de3c783b93fa81cfcc4bd5f4ab"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part06","bytes":8000,"sha256":"0a5001c8423993814a6a40d82145f725ef332a2a29689dae297c956fe6492466","git_blob_sha":"f4d55bdcd28abfba4c820133977c50231983382d"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part07","bytes":8000,"sha256":"fb8e51b036cd0f04eb315b4780092ef79bf01ee24823214802cb30943dd07565","git_blob_sha":"6d3119568bbe530f6db8e9c0153c1acc76000b62"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part08","bytes":8000,"sha256":"329552cfe97f15584d17bf0b8927ca78934ccd3cab62902901b8a678a7c1da2c","git_blob_sha":"9fa226265cfc6c814b6b6d2141f346674b39167e"},
+    {"name":"axm-witness-bootstrap.tar.gz.b64.part09","bytes":2404,"sha256":"285d89aea8c8d43259e78c734803fb99c07af6fbbbb33af50356ef050ff4107f","git_blob_sha":"17dc8f7278704665a0c281404ef6aaa84bb5da02"}
+  ],
+  "qualification": {
+    "python_tests": "21/21",
+    "go_tests": "3/3",
+    "python_campaign": "12/12",
+    "cross_language_campaign": "9/9",
+    "corpus": "synthetic laboratory fixtures",
+    "live_pspd_denominator": false,
+    "live_flock_denominator": false
+  }
+}
