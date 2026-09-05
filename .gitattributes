@@ -1,0 +1,2 @@
+# Preserve the exact shared reference fixture, including its CRLF bytes.
+tests/vectors/identity-reconciliation-clifford.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
